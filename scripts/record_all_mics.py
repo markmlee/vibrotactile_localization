@@ -18,7 +18,8 @@ from scipy.io.wavfile import read
 import time
 import wave
 import sys
-import librosa
+import os
+import contextlib
 
 def int_or_str(text):
     """Helper function for argument parsing."""
@@ -73,8 +74,6 @@ mapping = [c - 1 for c in args.channels]  # Channel numbers start with 1
 
 
 
-
-
 def audio_callback(q):
 
     def callback(data, frames, time, status):
@@ -87,47 +86,85 @@ def audio_callback(q):
 
 def main():
     print(f" ------ starting script ------  ")
+    if args.samplerate is None:
+        device_info = sd.query_devices(args.device, 'input')
+        args.samplerate = device_info['default_samplerate']
 
     #get number pf devicelist
     mic_number = len(args.devicelist)
 
-    data_list = []
 
+
+    queue_list = []
+    stream_sd_list = []
+    SoundFile_list = []
+
+    
     for i in range(mic_number):
-        file_name = f"rec_device_{args.devicelist[i]}.wav"
-        data, fs = librosa.load(file_name)
-        data_list.append(data)
+        #create instance of queue for each device
+        queue_name = f"q{i}" #q0 = queue.Queue() ... q6 = queue.Queue()
+        queue_name = queue.Queue() 
+        queue_list.append(queue_name)
 
-    print(f"size of data0: {len(data_list[0])}, size of data1: {len(data_list[1])}")
+        #create instance of stream for each device
+        stream_file = sd.InputStream(
+            device=args.devicelist[i], channels=max(args.channels),
+            samplerate=args.samplerate, callback=audio_callback(queue_list[i]))
 
-    # trim data0,1,2,3,4,5 to the shortest length in for loop
-    # get the minimum length of the data arrays
-    min_length = min(len(data) for data in data_list)
+        stream_sd_list.append(stream_file)
 
-    # trim all data arrays to the minimum length
-    for i in range(mic_number):
-        data_list[i] = data_list[i][:min_length]
+
+        #if file exists, delete it and recreate it
+        try:
+            os.remove(f"rec_device_{args.devicelist[i]}.wav")
+        except OSError:
+            pass
+
+        #create soundfile for each device
+        sf = SoundFile(
+            file=f"rec_device_{args.devicelist[i]}.wav",
+            mode="x",
+            samplerate=int(stream_sd_list[i].samplerate),
+            channels=stream_sd_list[i].channels,
+        )
+
+        SoundFile_list.append(sf)
+
+    
+    # record audio for all 6 streams until KeyboardInterrupt
+    with contextlib.ExitStack() as stack:
+        for stream in stream_sd_list:
+            stack.enter_context(stream)
+        print("press Ctrl+C to stop the recording")
+        try:
+            while True:
+                for i in range(6):
+                    SoundFile_list[i].write(queue_list[i].get())
+        except KeyboardInterrupt:
+            print("\nInterrupted by user.")
+
+
+    # record audio for all 6 streams until KeyboardInterrupt
+    # with stream0, stream1, stream2, stream3:
+    #     print("press Ctrl+C to stop the recording")
+    #     try:
+    #         while True:
+    #             sf0.write(q0.get())
+    #             sf1.write(q1.get())
+    #             sf2.write(q2.get())
+    #             sf3.write(q3.get())
+
+    #     except KeyboardInterrupt:
+    #         print("\nInterrupted by user.")
     
 
-
-    # plot data0 and data1 in same plot
-    # Create a time array for plotting
-    time = np.arange(0, len(data_list[0])) / fs
-
-    plt.figure(figsize=(10, 6))
-
-    #plot data_list
-    for i in range(mic_number):
-        plt.plot(time, data_list[i], label=f"mic{i}")
-
-
-    plt.title('Audio Data')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Amplitude')
-    plt.legend()
-
-    plt.show()
     
+    #sample rate
+    print(f" stream1.samplerate: {stream_sd_list[0].samplerate} ")
+
+    #size of sf0
+    print(f" size of sf0: {SoundFile_list[0].tell()} ")
+
 
 
     print(f" ------ ending script ------  ")
