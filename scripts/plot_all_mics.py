@@ -74,17 +74,6 @@ mapping = [c - 1 for c in args.channels]  # Channel numbers start with 1
 
 
 
-
-def audio_callback(q):
-
-    def callback(data, frames, time, status):
-        if status:
-            print(status)
-        q.put(data.copy())
-
-    return callback
-
-
 def main():
     print(f" ------ starting script ------  ")
 

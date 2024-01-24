@@ -143,22 +143,6 @@ def main():
         except KeyboardInterrupt:
             print("\nInterrupted by user.")
 
-
-    # record audio for all 6 streams until KeyboardInterrupt
-    # with stream0, stream1, stream2, stream3:
-    #     print("press Ctrl+C to stop the recording")
-    #     try:
-    #         while True:
-    #             sf0.write(q0.get())
-    #             sf1.write(q1.get())
-    #             sf2.write(q2.get())
-    #             sf3.write(q3.get())
-
-    #     except KeyboardInterrupt:
-    #         print("\nInterrupted by user.")
-    
-
-    
     #sample rate
     print(f" stream1.samplerate: {stream_sd_list[0].samplerate} ")
 
