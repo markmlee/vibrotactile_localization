@@ -1,6 +1,8 @@
 import microphone
 import microphone_utils
 from franka_motion import FrankaMotion
+import os
+import time
 
 def main():
     print(f" ------ starting script ------  ")
@@ -11,14 +13,29 @@ def main():
     fs = 44100
     channels_in = 1
 
-    mic = microphone.Microphone(devicelist, fs, channels_in)
+    #create a folder to save data
+    save_path_data = "/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/"
+    os.makedirs(save_path_data, exist_ok=True)
 
-    save_path_data = "/home/iam-lab/audio_localization/audio_datacollection/data/"
+    franka_robot = FrankaMotion()
+    franka_robot.go_to_init_pose()
 
-    # franka_robot = FrankaMotion()
-    # franka_robot.execute_motion()
+    record_duration = 3
 
-    
+    for h in range(3):
+        #get ground truth label [distance along cylinder, joint 6]
+        gt_label = [0,0]
+
+        #move robot 
+        franka_robot.tap_stick(-0.05)
+        mic = microphone.Microphone(devicelist, fs, channels_in)
+        mic.record_all_mics(save_path=save_path_data, duration=record_duration, trial_count=h, gt_label=gt_label)
+        time.sleep(record_duration*2) #wait for mic to finish recording before calling next skill
+        franka_robot.move_away_from_stick(0.05)
+
+        
+
+
     # #record
     # trial_count = 0
     # mic.record_all_mics(save_path=save_path_data, duration=3, trial_count=trial_count)

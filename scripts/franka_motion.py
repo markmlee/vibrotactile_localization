@@ -9,27 +9,42 @@ import signal
 class FrankaMotion:
     def __init__(self):
         print(f"initializing franka")
-        self.franka = FrankaArm()
-        signal.signal(signal.SIGINT, self.signal_handler)
+        self.franka = FrankaArm(with_gripper=False)
+    #     signal.signal(signal.SIGINT, self.signal_handler)
         
-    def signal_handler(self,sig, frame):
-        print('You pressed Ctrl+C!')
-        self.franka.reset_pose()
-        sys.exit(0)
+    # def signal_handler(self,sig, frame):
+    #     print('You pressed Ctrl+C!')
+    #     self.franka.reset_pose()
+    #     sys.exit(0)
 
 
-    def execute_motion(self):
+    def go_to_init_pose(self):
         print(f"starting motion")
         self.franka.reset_pose()
 
-        #go to init pose where j6 is 90 degrees
-        init_joints = [0,  -8.39737962e-01,  0, -2.41706093e+00,  0,  3.18553860e+00, 7.85081768e-01]
+        # #go to init pose where j6 is 90 degrees
+        init_joints = [0,  -8.44859e-01,  0, -2.431180e+00,  0,  3.14159e+00, 7.84695e-01]
         self.franka.goto_joints(init_joints)
 
-        #rotate joint6 to -180 degrees
-        joints = self.franka.get_joints()
-        joints[6] += np.deg2rad(-180)
-        self.franka.goto_joints(joints, ignore_virtual_walls=True)
+    def tap_stick(self, distanceY):
+        #move in -Y
+        current_pose = self.franka.get_pose()
+        current_pose.translation += np.array([0, distanceY, 0]) #-0.01
+        self.franka.goto_pose(current_pose, ignore_virtual_walls=True, block=False)
+
+    def move_away_from_stick(self, distanceY):
+        #move in +Y
+        current_pose = self.franka.get_pose()
+        current_pose.translation += np.array([0, distanceY, 0])
+        self.franka.goto_pose(current_pose, ignore_virtual_walls=True)
+
+    def execute_motion(self):
+        
+
+        # #rotate joint6 to -180 degrees
+        # joints = self.franka.get_joints()
+        # joints[6] += np.deg2rad(-180)
+        # self.franka.goto_joints(joints, ignore_virtual_walls=True)
 
         sys.exit()
 
@@ -85,12 +100,12 @@ class FrankaMotion:
         
 
 # main
-def main():
-    print(" ----- starting script ----- ")
-    franka_robot = FrankaMotion()
-    franka_robot.execute_motion()
+# def main():
+#     print(" ----- starting script ----- ")
+#     franka_robot = FrankaMotion()
+#     franka_robot.execute_motion()
 
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

@@ -23,7 +23,7 @@ import contextlib
 import time
 
 class Microphone:
-    def __init__(self, devicelist=[9,10], fs=44100, channels_in=1):
+    def __init__(self, devicelist, fs=44100, channels_in=1):
         self.record_duration = 1
         self.fs = fs
         self.path = "./"
@@ -69,17 +69,25 @@ class Microphone:
     def set_path(self, path):
         self.path = path
 
-    def record_all_mics(self, save_path, duration=1, trial_count=0):
+    def record_all_mics(self, save_path, duration=1, trial_count=0, gt_label=[0,0]):
 
-        print(f"recording for {duration} seconds")
+        #create a folder for each trial
+        save_folder_path = f"{save_path}trial{trial_count}/"
+        os.makedirs(save_folder_path, exist_ok=True)
 
+
+        #save ground truth label to folder as npy file
+        np.save(f"{save_folder_path}gt_label.npy", gt_label)
+
+
+        #create soundfile for each device
         SoundFile_list = []
 
         for i in range(self.number_of_mics):
             
         
             #file name with save path
-            file_name = f"{save_path}trial{trial_count}_mic{self.devicelist[i]}.wav"
+            file_name = f"{save_folder_path}mic{self.devicelist[i]}.wav"
             # print(f"file name: {file_name}")
 
             #if file exists, delete it and recreate it
