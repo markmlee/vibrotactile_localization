@@ -23,7 +23,7 @@ import contextlib
 import time
 
 class Microphone:
-    def __init__(self, devicelist=[9,10,11,12,13,14], fs=44100, channels_in=1):
+    def __init__(self, devicelist=[9,10], fs=44100, channels_in=1):
         self.record_duration = 1
         self.fs = fs
         self.path = "./"
@@ -34,7 +34,7 @@ class Microphone:
         self.stream_sd_list = []
         self.channels_in = channels_in
 
-        self.init_mic_queue(self.channels_in)
+        self.init_mic_queue()
 
 
     def audio_callback(self, q):
@@ -46,19 +46,22 @@ class Microphone:
         return callback
 
 
-    def init_mic_queue(self, channels_in):
+    def init_mic_queue(self):
         for i in range(self.number_of_mics):
             #create instance of queue for each device
             queue_name = f"q{i}" #q0 = queue.Queue() ... q6 = queue.Queue()
             queue_name = queue.Queue() 
             self.queue_list.append(queue_name)
-
+            
             #create instance of stream for each device
             stream_file = sd.InputStream(
-                device=self.devicelist[i], channels=channels_in,
+                device=self.devicelist[i], channels=self.channels_in,
                 samplerate=self.fs, callback=self.audio_callback(self.queue_list[i]))
 
             self.stream_sd_list.append(stream_file)
+
+
+            
 
     def set_record_duration(self, duration):
         self.record_duration = duration
@@ -77,6 +80,7 @@ class Microphone:
         
             #file name with save path
             file_name = f"{save_path}trial{trial_count}_mic{self.devicelist[i]}.wav"
+            # print(f"file name: {file_name}")
 
             #if file exists, delete it and recreate it
             try:
@@ -84,6 +88,7 @@ class Microphone:
             except OSError:
                 pass
 
+            
 
             #create soundfile for each device
             sf = SoundFile(
@@ -108,6 +113,15 @@ class Microphone:
                         SoundFile_list[i].write(self.queue_list[i].get())
             except Exception as e:
                 print(f"\nInterrupted due to error: {e}")
+
+        #close all soundfiles
+        for i in range(self.number_of_mics):
+            SoundFile_list[i].close()
+
+        #stop all contexts
+        
+
+
 
 
     
