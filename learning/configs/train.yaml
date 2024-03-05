@@ -1,0 +1,22 @@
+data_dir: /home/mark/audio_learning_project/data/franka_init_test_6mic/
+transform: mel
+
+device_list: [0,1,11,12,13,14]
+max_num_frames: 44100
+
+sample_rate: 44100
+n_fft: 512
+hop_length: 128
+n_mels: 40
+resample_rate: 11025
+
+model_path: /home/mark/audio_learning_project/models
+normalize_audio_data: True
+
+# ----- training parameters -----
+train_epochs: 400
+log_frequency: 10
+eval_frequency: 10
+
+batch_size: 80
+val_batch_size: 20

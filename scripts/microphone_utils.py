@@ -48,6 +48,45 @@ def plot_time_domain(data_list, fs):
 
     plt.show()
 
+def grid_plot_time_domain(data_list, fs):
+    """
+    subplot 3x2 grid of time domain plots. 
+    First column of 3 plots should be mic0,1,2
+    Second column of 3 plots should be mic3,4,5
+    
+    """
+    
+    mic_number = len(data_list)
+
+    #trim to the shortest length
+    min_length = min(len(data) for data in data_list)
+    for i in range(mic_number):
+        data_list[i] = data_list[i][:min_length]
+
+    print(f" ------ plotting wav files ------  ")
+    # plot data0 and data1 in same plot
+    # Create a time array for plotting
+    time = np.arange(0, len(data_list[0])) / fs
+
+    fig, axs = plt.subplots(3, 2, figsize=(15, 10), sharex=True)
+    fig.suptitle('Audio Data for all 6 mics')
+
+    for i in range(mic_number):
+        if i < 3:
+            axs[i, 0].plot(time, data_list[i])
+            axs[i, 0].set_title(f"mic{i}")
+            axs[i, 0].set_ylabel('Amplitude')
+            if i == 2:  # Only set x-label for the bottom plot in the first column
+                axs[i, 0].set_xlabel('Time [s]')
+        else:
+            axs[i-3, 1].plot(time, data_list[i])
+            axs[i-3, 1].set_title(f"mic{i}")
+            axs[i-3, 1].set_ylabel('Amplitude')
+            if i == 5:  # Only set x-label for the bottom plot in the second column
+                axs[i-3, 1].set_xlabel('Time [s]')
+
+    plt.show()
+
 def plot_spectrogram(data, fs):
     """
     using librosa spectrogram
@@ -402,8 +441,10 @@ def preprocess_data(mic_signals_from_all_trials, GT_labels):
         trimmed_all_mics_single_trial = trim_audio_signal(trimmed_length_all_mics_single_trial, fs=44100, start_time=0.6, end_clip_time=0.8)
 
         # visualize all 6 mics in a single trial
-        # plot_time_domain(trimmed_all_mics_single_trial, 44100)
-        # plot_spectrogram_all_mics(trimmed_all_mics_single_trial, 44100)
+        plot_time_domain(trimmed_all_mics_single_trial, 44100)
+        plot_spectrogram_all_mics(trimmed_all_mics_single_trial, 44100)
+
+        sys.exit()
 
 
         melspecs = []
@@ -413,26 +454,30 @@ def preprocess_data(mic_signals_from_all_trials, GT_labels):
             # downsampled_single_trial = librosa.resample(mic, orig_sr=44100, target_sr=11025) 
             # print(f"downsampled_single_trial shape: {downsampled_single_trial.shape}") #--> (110250,)
 
-            plot_spectrogram(downsampled_single_trial, 11025)
+            plot_spectrogram(mic, 11025)
 
             # -------------------------------------
-            melspec_img = get_spectrogram(mic, 44100)
+            # melspec_img = get_spectrogram(mic, 44100)
 
-
-            # -------------------------------------
-            #plot quadmesh of melspec_img
-            plt.figure(figsize=(10, 6))
-            plt.title('Mel-Spectrogram')
-            plt.imshow(melspec_img)
-            plt.colorbar(format='%+2.0f dB')
-            plt.show()
+            # #plot quadmesh of melspec_img
+            # plt.figure(figsize=(10, 6))
+            # plt.title('Mel-Spectrogram')
+            # plt.imshow(melspec_img)
+            # plt.colorbar(format='%+2.0f dB')
+            # plt.show()
 
             # print(f" size of melspec_img: {melspec_img.shape}")
-            sys.exit()
-            melspecs.append(melspec_img)
+            # sys.exit()
+            # melspecs.append(melspec_img)
+
+            #concat all 6 spectrograms
+            # X = np.concatenate(melspecs, axis=0)
+
+            # -------------------------------------
+            
+            
         
-        #concat all 6 spectrograms
-        X = np.concatenate(melspecs, axis=0)
+        
 
         # print(f"size of X: {X.shape}, size of GT: {GT_labels[index].shape}") #--> (768, 216)
         #Y is only the first element of GT_labels

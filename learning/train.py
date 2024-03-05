@@ -1,0 +1,266 @@
+import hydra
+
+from datasets import AudioDataset 
+import torch
+import logging
+import os
+from tqdm import tqdm
+import sys
+from easydict import EasyDict
+
+from torchvision import transforms as T
+import torch.nn as nn
+import torch.optim as optim
+import wandb
+
+#dataset
+from datasets import AudioDataset
+from datasets import load_data
+
+#models
+from models.KNN import KNN
+from models.CNN import CNNRegressor
+
+#eval
+from sklearn.metrics import mean_squared_error, root_mean_squared_error
+
+
+def train_KNN(cfg):
+    """
+    model = train(cfg)
+    error = eval(cfg, model)
+    """
+    print(f" --------- training ---------")
+
+    #load data
+    train_loader, val_loader = load_data(cfg)
+
+    
+    x_train, y_train = None, None
+
+    #train KNN & SVM by looping once through trainloader. 
+    #MAKE SURE BATCHSIZE IS SET TO LENGTH(DATASET)
+    for i, (x, y) in enumerate(tqdm(train_loader)):
+        x_train, y_train = x, y
+
+    print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
+
+    #flatten x_train feature to be ([80, 6*40*690]) 
+    x_train = x_train.view(x_train.size(0), -1)
+    print(f"flattened x_train shape: {x_train.shape}") #--> torch.Size([80, 165600])
+    #model
+    model = KNN()
+    print(f" fitting model ")
+    model.fit(x_train, y_train)
+
+
+    
+
+    print(f" --------- training complete ---------")
+    return model
+
+def eval_KNN(cfg, model):
+    """
+    model = train(cfg)
+    error = eval(cfg, model)
+    """
+    print(f" --------- evaluating ---------")
+
+    #load data
+    train_loader, val_loader = load_data(cfg)
+
+    x_val, y_val = None, None
+
+    #train KNN & SVM by looping once through trainloader. 
+    #MAKE SURE BATCHSIZE IS SET TO LENGTH(DATASET)
+    for i, (x, y) in enumerate(tqdm(val_loader)):
+        x_val, y_val = x, y
+
+    print(f"shapes of x_train, y_train: {x_val.shape}, {y_val.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
+
+    #flatten x_train feature to be ([80, 6*40*690]) 
+    x_val = x_val.view(x_val.size(0), -1)
+    print(f"flattened x_train shape: {x_val.shape}") #--> torch.Size([80, 165600])
+
+    #get MSE of prediction
+    mse = model.mae(x_val, y_val)
+
+
+    print(f" --------- evaluation complete ---------")
+
+    return mse
+
+def train_CNN(cfg,device):
+    """
+    model = train_CNN(cfg)
+    error = eval(cfg, model)
+    """
+    print(f" --------- training ---------")
+
+    #load data
+    train_loader, val_loader = load_data(cfg)
+
+    
+    #model
+    model = CNNRegressor(cfg)
+
+    #define loss and optimizer
+    criterion = torch.nn.L1Loss() #--> L1 loss using mean absolute error
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)  # Adjust step_size and gamma as needed
+
+
+
+    
+    model.to(device)
+    print(f"model: {model}")
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Number of parameters: {total_params}")
+
+    train_loss_history = []
+    val_loss_history = []
+
+    for i in tqdm(range(cfg.train_epochs)):
+
+        epoch_train_loss = 0
+        epoch_val_loss = 0
+
+        model.train()
+
+        for _, (x, y) in enumerate(train_loader):
+            x_train, y_train = x.to(device), y.to(device)
+
+            # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
+
+            optimizer.zero_grad()
+            y_pred = model(x_train)
+            train_loss = criterion(y_pred, y_train)
+            train_loss.backward()
+            optimizer.step()
+
+            epoch_train_loss += train_loss.item()
+            
+        epoch_train_loss = epoch_train_loss / len(train_loader)
+
+        # Adjust learning rate
+        scheduler.step()
+        # print(f"Learning rate: {scheduler.get_last_lr()}")
+        
+        #log epoch loss
+        if i%cfg.log_frequency == 0:
+            pass
+
+        #eval model 
+        if i%cfg.eval_frequency == 0:
+
+            model.eval()
+
+            for _, (x, y) in enumerate(tqdm(val_loader)):
+                x_val, y_val = x, y
+                
+                x_val, y_val = x_val.to(device), y_val.to(device)
+                with torch.no_grad():
+                    y_pred = model(x_val)
+                    val_loss = criterion(y_pred, y_val)
+                    epoch_val_loss += val_loss.item()
+                
+            epoch_val_loss = epoch_val_loss / len(val_loader)
+
+            print(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            train_loss_history.append(epoch_train_loss)
+            val_loss_history.append(epoch_val_loss)
+
+
+    print(f" --------- training complete ---------")
+    return model, train_loss_history, val_loss_history
+
+def eval_CNN(cfg, model,device):
+    """
+    error = eval_CNN(cfg, model)
+    """
+    #load data
+    train_loader, val_loader = load_data(cfg)
+
+    model.eval()
+
+    error = 0
+
+    for _, (x, y) in enumerate(tqdm(val_loader)):
+
+        x_val, y_val = x.to(device), y.to(device)
+
+        with torch.no_grad():
+            y_pred = model(x_val)
+
+            #use only first column element of y_pred and y_val
+            y_pred = y_pred[:,0]*100
+            y_val = y_val[:,0]*100
+
+            # print(f"y_pred: {y_pred}, y_val: {y_val}")
+            y_diff = y_pred - y_val
+            print(f"y_diff: {y_diff}")
+
+            #get absolute error
+            error += torch.mean(torch.abs(y_diff))
+            
+    #sum up the rmse and divide by number of batches
+    print(f"len(val_loader): {len(val_loader)}")
+    error = error / len(val_loader)
+    print(f"MAE: {error}")
+
+    return error
+
+        
+
+# ==================================================================================================
+def init_wandb(cfg):
+    """
+    Initialize wandb before each run
+    """
+    
+    # start a new wandb run to track this script
+    wandb.init(
+        name = "CNNRegressor",
+        # set the wandb project where this run will be logged
+        project="audio_localization",
+        # track hyperparameters and run metadata
+        config={
+        "learning_rate": 0.001,
+        "architecture": "Convblock3x",
+        "batch_size": cfg.batch_size,
+        }
+    )
+# ==================================================================================================
+
+    return wandb
+
+@hydra.main(version_base='1.3',config_path='configs', config_name = 'train')
+def main(cfg):
+
+    # wandb = init_wandb(cfg)
+
+    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    # print(f"device: {device}")
+
+    # model, train_loss_history, val_loss_history = train_CNN(cfg,device)
+
+    # #plot loss history
+    # import matplotlib.pyplot as plt
+    # plt.plot(train_loss_history, label='train_loss')
+    # plt.plot(val_loss_history, label='val_loss')
+    
+    # plt.legend()
+    # plt.show()
+
+    # error = eval_CNN(cfg, model,device)
+    # print(f" Mean Absolute Error: {error}")
+
+    # ------------------------------------------
+
+    model = train_KNN(cfg)
+    error = eval_KNN(cfg, model)
+    print(f" Mean Absolute Error: {error}")
+
+if __name__ == '__main__':
+    main()
