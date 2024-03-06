@@ -10,8 +10,14 @@ hop_length: 128
 n_mels: 40
 resample_rate: 11025
 
+# ----- visualization parameters -----
+visuaize_dataset: False
+
+# ----- training parameters -----
+
 model_path: /home/mark/audio_learning_project/models
-normalize_audio_data: True
+normalize_audio_data: False
+checkpoint_dir: ???
 
 # ----- training parameters -----
 train_epochs: 400
@@ -20,3 +26,5 @@ eval_frequency: 10
 
 batch_size: 80
 val_batch_size: 20
+
+log_wandb: false

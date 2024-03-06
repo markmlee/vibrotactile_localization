@@ -1,4 +1,6 @@
 import hydra
+from omegaconf import OmegaConf
+from omegaconf import DictConfig
 
 from datasets import AudioDataset 
 import torch
@@ -12,6 +14,12 @@ from torchvision import transforms as T
 import torch.nn as nn
 import torch.optim as optim
 import wandb
+import numpy as np
+
+#logger
+import logging
+log = logging.getLogger(__name__)
+from logger import Logger
 
 #dataset
 from datasets import AudioDataset
@@ -23,6 +31,23 @@ from models.CNN import CNNRegressor
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
+
+def plot_regression(y_pred_list, y_val_list):
+    #plot regression line
+    import matplotlib.pyplot as plt
+    # Initialize layout
+    fig, ax = plt.subplots(figsize = (9, 9))
+    #add scatter plot
+    ax.scatter(y_val_list, y_pred_list, alpha=0.7, edgecolors='k')
+    #add regression line
+    b,a, = np.polyfit(y_val_list, y_pred_list, deg=1)
+    xseq = np.arange(0,len(y_val_list),1)
+    ax.plot(xseq, a + b * xseq, color = 'r', lw=2.5)
+
+    plt.title('Regression plot')
+    plt.xlabel('y_val')
+    plt.ylabel('y_pred')
+    plt.show()
 
 
 def train_KNN(cfg):
@@ -83,19 +108,23 @@ def eval_KNN(cfg, model):
     print(f"flattened x_train shape: {x_val.shape}") #--> torch.Size([80, 165600])
 
     #get MSE of prediction
-    mse = model.mae(x_val, y_val)
+    mse,y_pred_list, y_val_list = model.mae(x_val, y_val)
+
+    #plot regression line
+    plot_regression(y_pred_list, y_val_list)
 
 
     print(f" --------- evaluation complete ---------")
 
     return mse
 
-def train_CNN(cfg,device):
+def train_CNN(cfg,device, wandb, logger):
     """
     model = train_CNN(cfg)
     error = eval(cfg, model)
     """
     print(f" --------- training ---------")
+    logger.log(" --------- training ---------")
 
     #load data
     train_loader, val_loader = load_data(cfg)
@@ -115,11 +144,14 @@ def train_CNN(cfg,device):
     
     model.to(device)
     print(f"model: {model}")
+    
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Number of parameters: {total_params}")
 
     train_loss_history = []
     val_loss_history = []
+
+    best_val_loss = torch.inf
 
     for i in tqdm(range(cfg.train_epochs)):
 
@@ -149,7 +181,7 @@ def train_CNN(cfg,device):
         
         #log epoch loss
         if i%cfg.log_frequency == 0:
-            pass
+            logger.log({'epoch': i, 'train_loss': epoch_train_loss})
 
         #eval model 
         if i%cfg.eval_frequency == 0:
@@ -167,9 +199,23 @@ def train_CNN(cfg,device):
                 
             epoch_val_loss = epoch_val_loss / len(val_loader)
 
-            print(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            logger.log(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
             train_loss_history.append(epoch_train_loss)
             val_loss_history.append(epoch_val_loss)
+
+            #save model
+            if epoch_val_loss < best_val_loss:
+                logger.log(f"Saving best model")
+                best_val_loss = epoch_val_loss
+
+                #save model to output directory
+                torch.save(model.state_dict(), os.path.join(cfg.checkpoint_dir, 'model.pth'))
+                wandb.save('best_model.pth')
+
+                #print location of saved model
+                logger.log("Saved model : {}/model.pth".format(cfg.checkpoint_dir))
+
+
 
 
     print(f" --------- training complete ---------")
@@ -178,6 +224,7 @@ def train_CNN(cfg,device):
 def eval_CNN(cfg, model,device):
     """
     error = eval_CNN(cfg, model)
+    plot y_pred vs y_val in a regression plot
     """
     #load data
     train_loader, val_loader = load_data(cfg)
@@ -185,6 +232,8 @@ def eval_CNN(cfg, model,device):
     model.eval()
 
     error = 0
+    y_val_list = []
+    y_pred_list = []
 
     for _, (x, y) in enumerate(tqdm(val_loader)):
 
@@ -203,11 +252,20 @@ def eval_CNN(cfg, model,device):
 
             #get absolute error
             error += torch.mean(torch.abs(y_diff))
+        
+        #get tensor values and append them to list
+        y_val_list.extend(y_val.cpu().numpy())
+        y_pred_list.extend(y_pred.cpu().numpy())
+        
             
     #sum up the rmse and divide by number of batches
     print(f"len(val_loader): {len(val_loader)}")
     error = error / len(val_loader)
     print(f"MAE: {error}")
+
+    #plot regression line
+    plot_regression(y_pred_list, y_val_list)
+
 
     return error
 
@@ -236,31 +294,44 @@ def init_wandb(cfg):
     return wandb
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'train')
-def main(cfg):
+def main(cfg: DictConfig):
 
-    # wandb = init_wandb(cfg)
+    logger = Logger(log_wandb=cfg.log_wandb, simple_log = log, cfg=cfg)
+    print(f"Working directory : {os.getcwd()}")
+    print(f"Output directory  : {hydra.core.hydra_config.HydraConfig.get().runtime.output_dir}")
 
-    # device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    # print(f"device: {device}")
+    #  Save the configuration to a file in the output directory
+    output_dir = hydra.core.hydra_config.HydraConfig.get().runtime.output_dir
+    config_path = os.path.join(output_dir, 'config.yaml')
 
-    # model, train_loss_history, val_loss_history = train_CNN(cfg,device)
+    with open(config_path, 'w') as f:
+        f.write(OmegaConf.to_yaml(cfg))
 
-    # #plot loss history
-    # import matplotlib.pyplot as plt
-    # plt.plot(train_loss_history, label='train_loss')
-    # plt.plot(val_loss_history, label='val_loss')
+    # ------------------------------------------
+
+    wandb = init_wandb(cfg)
+
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"device: {device}")
+
+    model, train_loss_history, val_loss_history = train_CNN(cfg,device, wandb, logger)
+
+    #plot loss history
+    import matplotlib.pyplot as plt
+    plt.plot(train_loss_history, label='train_loss')
+    plt.plot(val_loss_history, label='val_loss')
     
-    # plt.legend()
-    # plt.show()
+    plt.legend()
+    plt.show()
 
     # error = eval_CNN(cfg, model,device)
     # print(f" Mean Absolute Error: {error}")
 
     # ------------------------------------------
 
-    model = train_KNN(cfg)
-    error = eval_KNN(cfg, model)
-    print(f" Mean Absolute Error: {error}")
+    # model = train_KNN(cfg)
+    # error = eval_KNN(cfg, model)
+    # print(f" Mean Absolute Error: {error}")
 
 if __name__ == '__main__':
     main()

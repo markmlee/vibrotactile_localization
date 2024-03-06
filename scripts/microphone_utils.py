@@ -127,27 +127,54 @@ def plot_spectrogram_all_mics(data_list, fs):
 
     for i in range(mic_number):
         # convert to spectrogram
-        S = librosa.stft(data_list[i])
-        S_db = librosa.amplitude_to_db(np.abs(S), ref=np.max)
-        img = librosa.display.specshow(S_db, sr=fs, x_axis='time', y_axis='log', ax=axs[i//2, i%2], vmin=-80, vmax=0)
+        img = get_spectrogram(data_list[i], fs)
         axs[i//2, i%2].set_title(f"mic{i}")
         fig.colorbar(img, ax=axs[i//2, i%2], format='%+2.0f dB')
-
-
-
-        #convert to mel-spectrogram
-        # melspec = librosa.feature.melspectrogram(y=data_list[i], sr=44100, n_mels=128, fmax=22050) 
-
-        # S_dB = librosa.power_to_db(melspec, ref=np.max)
-        # img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=44100, fmax=22050, ax=axs[i//2, i%2], vmin=-80, vmax=0)
-        # axs[i//2, i%2].set_title(f"mic{i}")
-        # fig.colorbar(img, ax=axs[i//2, i%2], format='%+2.0f dB')
 
 
     plt.show()
 
 
+def grid_plot_spectrogram(data_list, fs):
+    """
+    subplot 3x2 grid of time domain plots. 
+    First column of 3 plots should be mic0,1,2
+    Second column of 3 plots should be mic3,4,5
+    """
+        
+    mic_number = len(data_list)
 
+    #trim to the shortest length
+    min_length = min(len(data) for data in data_list)
+    for i in range(mic_number):
+        data_list[i] = data_list[i][:min_length]
+
+    print(f" ------ plotting spectrogram ------  ")
+    # Plot the spectrogram for all 6 mics
+    fig, axs = plt.subplots(3, 2, figsize=(15, 10))
+    fig.suptitle('Mel-Spectrogram for all 6 mics')
+
+    for i in range(mic_number):
+        # convert to spectrogram
+        if i < 3:
+            img = get_spectrogram(data_list[i], fs)
+            axs[i, 0].set_title(f"mic{i}")
+            fig.colorbar(img, ax=axs[i, 0], format='%+2.0f dB')
+            if i == 2:
+                axs[i, 0].set_xlabel('Time [s]')
+        else:
+            img = get_spectrogram(data_list[i], fs)
+            axs[i-3, 1].set_title(f"mic{i}")
+            fig.colorbar(img, ax=axs[i-3, 1], format='%+2.0f dB')
+            if i == 5:
+                axs[i-3, 1].set_xlabel('Time [s]')
+
+        
+    plt.show()
+
+
+
+   
 
 def plot_wav_files(devicelist, trial_number, load_path, fs=44100):
     """

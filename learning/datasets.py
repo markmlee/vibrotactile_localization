@@ -12,6 +12,16 @@ from transforms import to_mel_spectrogram, get_signal
 
 import sys
 import numpy as np
+
+import matplotlib.pyplot as plt
+import librosa.display
+import librosa
+
+#import function from another directory for plotting
+sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
+import microphone_utils
+
+
 """
 Define AudioDataset class to load and process audio data
 referenced from: https://github.com/abitha-thankaraj/audio-robot-learning
@@ -33,6 +43,7 @@ class AudioDataset(Dataset):
     def __init__(self, cfg = None, data_dir = None, transform = None):
         print(f" --------- initializing DS ---------")
         self.cfg = cfg
+        
 
         if transform is not None: # Only for audio datasets 
             # self.resampler = T.Resample(orig_freq = self.cfg.sample_rate, new_freq = self.cfg.resample_rate)
@@ -80,6 +91,7 @@ class AudioDataset(Dataset):
         for i in range(num_mics):
             wav_filename = f"{self.dir[trial_n]}/mic{self.cfg.device_list[i]}.wav"
             wav, sample_rate = torchaudio.load(wav_filename)
+            self.sample_rate = sample_rate
 
             #trim 0.5s from start and end of wav file
             wav = wav[:, int(0.5 * sample_rate):int(-0.5 * sample_rate)]
@@ -128,6 +140,42 @@ class AudioDataset(Dataset):
         
 
 
+def plot_spectrogram(data, fs):
+    """
+    subplot 3x2 grid of time domain plots. 
+    First column of 3 plots should be mic0,1,2
+    Second column of 3 plots should be mic3,4,5
+    """
+
+    # Plot the spectrogram for all 6 mics
+    fig, axs = plt.subplots(3, 2, figsize=(15, 10))
+    fig.suptitle('Mel-Spectrogram for all 6 mics')
+
+    for i,S in enumerate((data)):
+        if i < 3:
+            axs[i, 0].set_title(f"mic{i}")
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, ax=axs[i, 0], vmin=-80, vmax=0)
+            fig.colorbar(img, ax=axs[i, 0], format='%+2.0f dB')
+
+            
+            if i == 2:
+                axs[i, 0].set_xlabel('Time [s]')
+        else:
+            axs[i-3, 1].set_title(f"mic{i}")
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            img = librosa.display.specshow(S_dB,x_axis='time', y_axis='mel', sr=fs, ax=axs[i-3, 1], vmin=-80, vmax=0)
+            fig.colorbar(img, ax=axs[i-3, 1], format='%+2.0f dB')
+
+            if i == 5:
+                axs[i-3, 1].set_xlabel('Time [s]')
+        
+    plt.show()
+
+
+    
+
+
 
     
 def load_data(cfg):
@@ -136,6 +184,27 @@ def load_data(cfg):
     """
 
     dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform)
+
+    #visuaize dataset
+    if cfg.visuaize_dataset:
+        print(f"size of dataset: {len(dataset)}")
+
+        #get first element of dataset
+        x, y = dataset[0]
+        print(f"size of x, y: {x.size()}, {len(y)}") #--> torch.Size([6, 40, 345]), [0,0]
+
+        #convert to numpy
+        x = x.numpy()
+
+        #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
+        x = [x[i] for i in range(x.shape[0])]
+        print(f"size of x: {len(x)}")
+
+        # plot mel spectrogram
+        print(f"sample rate: {dataset.sample_rate}")
+        plot_spectrogram(x, dataset.sample_rate)
+        sys.exit()
+
 
     # split the dataset into train and validation 80/20
     train_size = int(0.8 * len(dataset))
