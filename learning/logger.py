@@ -18,7 +18,7 @@ class Logger:
             self._configure_simple_log(log_dir)
         
         if log_wandb:
-            wandb_exp_name = '-'.join(HydraConfig.get().run.dir.split('/')[-2:])
+            wandb_exp_name = cfg.wandb_run_name if cfg.wandb_run_name is not None else None
             wandb.init(project = cfg.wandb_project, 
                 name=wandb_exp_name,
                 config = omegaconf.OmegaConf.to_container(cfg, resolve=True), 

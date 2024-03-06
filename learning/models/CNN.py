@@ -7,6 +7,9 @@ class CNNRegressor(nn.Module):
         super(CNNRegressor, self).__init__()
         
         input_size = len(cfg.device_list)
+
+        if cfg.augment_audio:
+            input_size = cfg.augment_num_channel
         output_size = 2
     
         # self.network = nn.Sequential(

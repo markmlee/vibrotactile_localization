@@ -32,6 +32,17 @@ from models.CNN import CNNRegressor
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
 
+
+def apply_transforms(cfg, data):
+    """
+    automatically apply transforms to batch of data during train/val
+    """
+
+    transformed_data = data
+
+    return transformed_data
+
+
 def plot_regression(y_pred_list, y_val_list):
     #plot regression line
     import matplotlib.pyplot as plt
@@ -123,7 +134,6 @@ def train_CNN(cfg,device, wandb, logger):
     model = train_CNN(cfg)
     error = eval(cfg, model)
     """
-    print(f" --------- training ---------")
     logger.log(" --------- training ---------")
 
     #load data
@@ -143,10 +153,10 @@ def train_CNN(cfg,device, wandb, logger):
 
     
     model.to(device)
-    print(f"model: {model}")
+    logger.log(f"model: {model}")
     
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"Number of parameters: {total_params}")
+    logger.log(f"Number of parameters: {total_params}")
 
     train_loss_history = []
     val_loss_history = []
@@ -163,10 +173,16 @@ def train_CNN(cfg,device, wandb, logger):
         for _, (x, y) in enumerate(train_loader):
             x_train, y_train = x.to(device), y.to(device)
 
+            
+
+
             # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
 
             optimizer.zero_grad()
             y_pred = model(x_train)
+
+            # print(f"y values: {y_train}, y_pred: {y_pred}")
+
             train_loss = criterion(y_pred, y_train)
             train_loss.backward()
             optimizer.step()
@@ -182,6 +198,8 @@ def train_CNN(cfg,device, wandb, logger):
         #log epoch loss
         if i%cfg.log_frequency == 0:
             logger.log({'epoch': i, 'train_loss': epoch_train_loss})
+            
+
 
         #eval model 
         if i%cfg.eval_frequency == 0:
@@ -200,6 +218,10 @@ def train_CNN(cfg,device, wandb, logger):
             epoch_val_loss = epoch_val_loss / len(val_loader)
 
             logger.log(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+
+            if cfg.log_wandb:
+                wandb.log({'epoch': i, 'train_loss': epoch_train_loss})
+                wandb.log({'epoch': i, 'val_loss': epoch_val_loss})
             train_loss_history.append(epoch_train_loss)
             val_loss_history.append(epoch_val_loss)
 
@@ -209,8 +231,8 @@ def train_CNN(cfg,device, wandb, logger):
                 best_val_loss = epoch_val_loss
 
                 #save model to output directory
-                torch.save(model.state_dict(), os.path.join(cfg.checkpoint_dir, 'model.pth'))
-                wandb.save('best_model.pth')
+                # torch.save(model.state_dict(), os.path.join(cfg.checkpoint_dir, 'model.pth'))
+                # wandb.save('best_model.pth')
 
                 #print location of saved model
                 logger.log("Saved model : {}/model.pth".format(cfg.checkpoint_dir))
@@ -221,15 +243,13 @@ def train_CNN(cfg,device, wandb, logger):
     print(f" --------- training complete ---------")
     return model, train_loss_history, val_loss_history
 
-def eval_CNN(cfg, model,device):
+def eval_random_prediction(cfg, device):
     """
-    error = eval_CNN(cfg, model)
-    plot y_pred vs y_val in a regression plot
+    select random prediction from val_loader and evaluate
     """
+
     #load data
     train_loader, val_loader = load_data(cfg)
-
-    model.eval()
 
     error = 0
     y_val_list = []
@@ -240,11 +260,13 @@ def eval_CNN(cfg, model,device):
         x_val, y_val = x.to(device), y.to(device)
 
         with torch.no_grad():
-            y_pred = model(x_val)
+            # Get 20 random indices from y_val to assign to y_pred
+            rand_idx = torch.randperm(y_val.size(0))[:20]
+            y_pred = y_val[rand_idx]
 
             #use only first column element of y_pred and y_val
-            y_pred = y_pred[:,0]*100
-            y_val = y_val[:,0]*100
+            y_pred = y_pred[:,0]
+            y_val = y_val[:,0]
 
             # print(f"y_pred: {y_pred}, y_val: {y_val}")
             y_diff = y_pred - y_val
@@ -263,8 +285,62 @@ def eval_CNN(cfg, model,device):
     error = error / len(val_loader)
     print(f"MAE: {error}")
 
+    #size of y_pred_list and y_val_list
+    print(f"size of y_pred_list, y_val_list: {len(y_pred_list)}, {len(y_val_list)}")
+
     #plot regression line
     plot_regression(y_pred_list, y_val_list)
+
+
+    return error
+
+
+def eval_CNN(cfg, model,device, logger):
+    """
+    error = eval_CNN(cfg, model)
+    plot y_pred vs y_val in a regression plot
+    """
+    logger.log(" --------- evaluating ---------")
+    #load data
+    train_loader, val_loader = load_data(cfg)
+
+    model.eval()
+
+    error = 0
+    y_val_list = []
+    y_pred_list = []
+
+    for _, (x, y) in enumerate(tqdm(val_loader)):
+
+        x_val, y_val = x.to(device), y.to(device)
+
+        with torch.no_grad():
+            y_pred = model(x_val)
+
+            #use only first column element of y_pred and y_val
+            y_pred = y_pred[:,0]
+            y_val = y_val[:,0]
+
+            # print(f"y_pred: {y_pred}, y_val: {y_val}")
+            y_diff = y_pred - y_val
+            print(f"y_diff: {y_diff}")
+
+            #get absolute error
+            error += torch.mean(torch.abs(y_diff))
+        
+        #get tensor values and append them to list
+        y_val_list.extend(y_val.cpu().numpy())
+        y_pred_list.extend(y_pred.cpu().numpy())
+        
+            
+    #sum up the rmse and divide by number of batches
+    error = error / len(val_loader)
+
+    logger.log(f"Mean Absolute Error: {error}")
+
+    if cfg.visuaize_regression:
+        #plot regression line
+        plot_regression(y_pred_list, y_val_list)
 
 
     return error
@@ -279,9 +355,9 @@ def init_wandb(cfg):
     
     # start a new wandb run to track this script
     wandb.init(
-        name = "CNNRegressor",
+        name = cfg.wandb_run_name,
         # set the wandb project where this run will be logged
-        project="audio_localization",
+        project=cfg.wandb_project,
         # track hyperparameters and run metadata
         config={
         "learning_rate": 0.001,
@@ -307,25 +383,24 @@ def main(cfg: DictConfig):
     with open(config_path, 'w') as f:
         f.write(OmegaConf.to_yaml(cfg))
 
-    # ------------------------------------------
+    wandb = None
+    if cfg.log_wandb:
+        wandb = init_wandb(cfg)
 
-    wandb = init_wandb(cfg)
+    # ------------------------------------------
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"device: {device}")
 
+    logger.log(f"device: {device}")
+    logger.log(f"cfg: {cfg}")
+
     model, train_loss_history, val_loss_history = train_CNN(cfg,device, wandb, logger)
 
-    #plot loss history
-    import matplotlib.pyplot as plt
-    plt.plot(train_loss_history, label='train_loss')
-    plt.plot(val_loss_history, label='val_loss')
     
-    plt.legend()
-    plt.show()
-
-    # error = eval_CNN(cfg, model,device)
-    # print(f" Mean Absolute Error: {error}")
+    # error = eval_random_prediction(cfg, device)
+    error = eval_CNN(cfg, model,device,logger)
+    logger.log(f"Mean Absolute Error: {error}")
 
     # ------------------------------------------
 
