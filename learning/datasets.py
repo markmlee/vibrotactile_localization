@@ -234,7 +234,117 @@ class AudioDataset(Dataset):
 
         return x,y 
 
+
+
+class AudioDataset_validation(Dataset):
+    """
+    AudioDataset class to manually augment the data for testing   
+    """
+
+    def __init__(self, cfg = None, data_dir = None, transform = None, augmentation = None):
+        print(f" --------- initializing DS ---------")
+        self.cfg = cfg
+
+        if transform is not None: # Only for audio datasets 
+            # self.resampler = T.Resample(orig_freq = self.cfg.sample_rate, new_freq = self.cfg.resample_rate)
+            self.transform = TRANSFORMS[transform]
+
+        #get all directory path to trials
+        self.dir = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
         
+        #load data (for multiple mics in device list, get wav files)
+        len_data = len(self.dir)
+        
+        self.X_mic_data = []
+        self.Y_label_data = []
+
+        for trial_n in range(len_data):
+
+            x_data, y_label = self.load_xy_single_trial(self.cfg, trial_n)
+
+            self.X_mic_data.append(x_data)
+            self.Y_label_data.append(y_label)
+
+        self.X_mic_data = torch.stack(self.X_mic_data)  # Shape: [len_data, num_mics, num_mels, num_bins_time]
+
+        if cfg.normalize_audio_data: 
+            
+            if cfg.transform == 'mel': #torch.Size([6, 16, 442]) - [num_mics, num_mels, num_bins_time]
+
+                # Calculate mean and variance for each microphone across all trials
+                mean = self.X_mic_data.mean(dim=[0, 2, 3], keepdim=True)  # Mean across trials, num_mels, and num_bins_time
+                var = self.X_mic_data.var(dim=[0, 2, 3], keepdim=True)    # Variance across trials, num_mels, and num_bins_time
+
+                # Normalize the X_mic_data
+                for i in range(len_data):
+                    self.X_mic_data[i] = (self.X_mic_data[i] - mean) / torch.sqrt(var)
+
+            print(f" --------- DS normalized ---------")
+
+
+    def load_xy_single_trial(self, cfg, trial_n):
+        """
+        Load the data from a single trial
+        """
+
+        num_mics = len(self.cfg.device_list)
+
+        wavs = []
+        melspecs = []
+        for i in range(num_mics):
+            wav_filename = f"{self.dir[trial_n]}/mic{self.cfg.device_list[i]}.wav"
+
+            wav, sample_rate = torchaudio.load(wav_filename)
+            self.sample_rate = sample_rate
+            # print(f"sample rate: {sample_rate}") #--> sample rate: 44100
+
+            #trim 0.5s from start and end of wav file
+            wav = wav[:, int(self.cfg.trim_duration * sample_rate):int(-self.cfg.trim_duration * sample_rate)]
+            
+
+            #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
+            if wav.size(1) < self.cfg.max_num_frames:
+                wav = F.pad(wav, (0, self.cfg.max_num_frames - wav.size(1)), mode='circular'   )
+            else:
+                wav = wav[:, :self.cfg.max_num_frames]
+
+            #append to list of wavs
+            wavs.append(wav.squeeze(0)) # remove the dimension of size 1
+
+            #apply transform to wav file
+            if self.transform:
+                mel = self.transform(self.cfg, wav.float())
+                melspecs.append(mel.squeeze(0)) # remove the dimension of size 1
+
+        # stack wav files into a tensor of shape (num_mics, num_samples)
+        wav_tensor = torch.stack(wavs, dim=0)
+        # print(f"dimension of wav tensor: {wav.size()}") #--> dimension of wav tensor: torch.Size([6, 88200])
+
+        #stack mel spectrograms into a tensor of shape (num_mics, num_mels, num_samples)
+        mel_tensor = torch.stack(melspecs, dim=0)
+        # print(f"size of mel_tensor: {mel_tensor.size()}") #--> size of data: torch.Size([6, 16, 442])
+
+        if cfg.transform == 'mel':
+            data = mel_tensor
+
+        if cfg.transform == 'wav':
+            data = wav_tensor
+            
+        #get label from directory 
+        label_file = f"{self.dir[trial_n]}/gt_label.npy"
+        label = np.load(label_file) #--> [distance along cylinder, joint 6]
+
+        #convert label m unit to cm
+        label[0] = label[0] * 100
+
+        return data, label
+    
+    def __len__(self):
+        return len(self.dir)
+    
+    def __getitem__(self, idx):
+        x,y = self.X_mic_data[idx], self.Y_label_data[idx]
+        return x,y 
 
 
 def plot_spectrogram(cfg, data, fs):
@@ -277,12 +387,20 @@ def plot_spectrogram(cfg, data, fs):
 
 
     
-def load_data(cfg):
+def load_data(cfg, train_of_val = 'val'):
     """
     Load the dataset and split it into train and validation
     """
 
-    dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augmentation = cfg.augmentation_type)
+    if train_of_val == 'train':
+        dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augmentation = cfg.augmentation_type)
+
+    elif train_of_val == 'val':
+        dataset = AudioDataset_validation(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augmentation = None)
+    
+    else:
+        print("Error: train_of_val should be either 'train' or 'val'")
+        sys.exit()
 
     #visuaize dataset
     if cfg.visuaize_dataset:

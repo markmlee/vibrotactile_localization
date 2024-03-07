@@ -33,14 +33,6 @@ from models.CNN import CNNRegressor
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
 
 
-def apply_transforms(cfg, data):
-    """
-    automatically apply transforms to batch of data during train/val
-    """
-
-    transformed_data = data
-
-    return transformed_data
 
 
 def plot_regression(y_pred_list, y_val_list):
@@ -69,7 +61,7 @@ def train_KNN(cfg):
     print(f" --------- training ---------")
 
     #load data
-    train_loader, val_loader = load_data(cfg)
+    train_loader, val_loader = load_data(cfg, train_of_val='train')
 
     
     x_train, y_train = None, None
@@ -103,7 +95,7 @@ def eval_KNN(cfg, model):
     print(f" --------- evaluating ---------")
 
     #load data
-    train_loader, val_loader = load_data(cfg)
+    train_loader, val_loader = load_data(cfg, train_of_val='val')
 
     x_val, y_val = None, None
 
@@ -137,7 +129,7 @@ def train_CNN(cfg,device, wandb, logger):
     logger.log(" --------- training ---------")
 
     #load data
-    train_loader, val_loader = load_data(cfg)
+    train_loader, val_loader = load_data(cfg, train_of_val='train')
 
     
     #model
@@ -234,6 +226,8 @@ def train_CNN(cfg,device, wandb, logger):
                 # torch.save(model.state_dict(), os.path.join(cfg.checkpoint_dir, 'model.pth'))
                 # wandb.save('best_model.pth')
 
+                best_model = model
+
                 #print location of saved model
                 logger.log("Saved model : {}/model.pth".format(cfg.checkpoint_dir))
 
@@ -241,7 +235,7 @@ def train_CNN(cfg,device, wandb, logger):
 
 
     print(f" --------- training complete ---------")
-    return model, train_loss_history, val_loss_history
+    return best_model, train_loss_history, val_loss_history
 
 def eval_random_prediction(cfg, device):
     """
@@ -249,7 +243,7 @@ def eval_random_prediction(cfg, device):
     """
 
     #load data
-    train_loader, val_loader = load_data(cfg)
+    train_loader, val_loader = load_data(cfg, train_of_val='val')
 
     error = 0
     y_val_list = []
@@ -302,7 +296,7 @@ def eval_CNN(cfg, model,device, logger):
     """
     logger.log(" --------- evaluating ---------")
     #load data
-    train_loader, val_loader = load_data(cfg)
+    train_loader, val_loader = load_data(cfg, train_of_val='val')
 
     model.eval()
 
