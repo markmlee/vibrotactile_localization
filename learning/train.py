@@ -31,7 +31,7 @@ from models.CNN import CNNRegressor
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
-
+from datasets import plot_spectrogram
 
 
 
@@ -95,7 +95,7 @@ def eval_KNN(cfg, model):
     print(f" --------- evaluating ---------")
 
     #load data
-    train_loader, val_loader = load_data(cfg, train_of_val='val')
+    train_loader, val_loader = load_data(cfg, train_or_val='val')
 
     x_val, y_val = None, None
 
@@ -129,7 +129,7 @@ def train_CNN(cfg,device, wandb, logger):
     logger.log(" --------- training ---------")
 
     #load data
-    train_loader, val_loader = load_data(cfg, train_of_val='train')
+    train_loader, val_loader = load_data(cfg, train_or_val='train')
 
     
     #model
@@ -165,8 +165,7 @@ def train_CNN(cfg,device, wandb, logger):
         for _, (x, y) in enumerate(train_loader):
             x_train, y_train = x.to(device), y.to(device)
 
-            
-
+ 
 
             # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
 
@@ -223,7 +222,7 @@ def train_CNN(cfg,device, wandb, logger):
                 best_val_loss = epoch_val_loss
 
                 #save model to output directory
-                # torch.save(model.state_dict(), os.path.join(cfg.checkpoint_dir, 'model.pth'))
+                torch.save(model.state_dict(), os.path.join(cfg.checkpoint_dir, 'model.pth'))
                 # wandb.save('best_model.pth')
 
                 best_model = model
@@ -231,7 +230,12 @@ def train_CNN(cfg,device, wandb, logger):
                 #print location of saved model
                 logger.log("Saved model : {}/model.pth".format(cfg.checkpoint_dir))
 
+        #at last epoch, run eval_CNN to plot regression line
+        if i == cfg.train_epochs-1:
+            error = evaluate_CNN(cfg,best_model,device,val_loader, logger)
+            logger.log(f"Mean Absolute Error: {error}")
 
+    
 
 
     print(f" --------- training complete ---------")
@@ -243,7 +247,7 @@ def eval_random_prediction(cfg, device):
     """
 
     #load data
-    train_loader, val_loader = load_data(cfg, train_of_val='val')
+    train_loader, val_loader = load_data(cfg, train_or_val='val')
 
     error = 0
     y_val_list = []
@@ -289,6 +293,53 @@ def eval_random_prediction(cfg, device):
     return error
 
 
+def evaluate_CNN(cfg, model, device, val_loader, logger):
+    """
+    evaluate without creating a new dataset 
+    """
+    model.eval()
+
+    error = 0
+    y_val_list = []
+    y_pred_list = []
+
+    for _, (x, y) in enumerate(tqdm(val_loader)):
+
+        x_val, y_val = x.to(device), y.to(device)
+
+    
+        with torch.no_grad():
+            y_pred = model(x_val)
+
+            #use only first column element of y_pred and y_val
+            y_pred = y_pred[:,0]
+            y_val = y_val[:,0]
+
+            # print(f"y_pred: {y_pred}, y_val: {y_val}")
+            y_diff = y_pred - y_val
+            print(f"y_diff: {y_diff}")
+
+            #get absolute error
+            error += torch.mean(torch.abs(y_diff))
+        
+        #get tensor values and append them to list
+        y_val_list.extend(y_val.cpu().numpy())
+        y_pred_list.extend(y_pred.cpu().numpy())
+        
+            
+    #sum up the rmse and divide by number of batches
+    error = error / len(val_loader)
+
+    logger.log(f"Mean Absolute Error: {error}")
+
+    if cfg.visuaize_regression:
+        #plot regression line
+        plot_regression(y_pred_list, y_val_list)
+
+
+    return error
+
+
 def eval_CNN(cfg, model,device, logger):
     """
     error = eval_CNN(cfg, model)
@@ -296,7 +347,7 @@ def eval_CNN(cfg, model,device, logger):
     """
     logger.log(" --------- evaluating ---------")
     #load data
-    train_loader, val_loader = load_data(cfg, train_of_val='val')
+    train_loader, val_loader = load_data(cfg, train_or_val='val')
 
     model.eval()
 
@@ -307,6 +358,11 @@ def eval_CNN(cfg, model,device, logger):
     for _, (x, y) in enumerate(tqdm(val_loader)):
 
         x_val, y_val = x.to(device), y.to(device)
+
+        #convert tensor to numpy array and plot spectrogram
+        x_val = x_val.cpu().numpy()
+
+
 
         with torch.no_grad():
             y_pred = model(x_val)
@@ -393,8 +449,8 @@ def main(cfg: DictConfig):
 
     
     # error = eval_random_prediction(cfg, device)
-    error = eval_CNN(cfg, model,device,logger)
-    logger.log(f"Mean Absolute Error: {error}")
+    # error = eval_CNN(cfg, model,device,logger)
+    # logger.log(f"Mean Absolute Error: {error}")
 
     # ------------------------------------------
 

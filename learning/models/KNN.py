@@ -69,7 +69,13 @@ class KNN:
         mae = mean_absolute_error(y, y_pred)
         print(f"mae: {mae}")
 
-        return mae
+        y_pred_list = []
+        y_list = []
+
+        y_pred_list.extend(y_pred)
+        y_list.extend(y)
+
+        return mae, y_pred_list, y_list
 
     def save(self, path):
         np.save(path, self.knn)

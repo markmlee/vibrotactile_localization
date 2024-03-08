@@ -1,0 +1,42 @@
+#UPDATE PARAMS
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/augment_timeshift_mask
+
+
+# ----- mic / data param -----
+data_dir: /home/mark/audio_learning_project/data/franka_init_test_6mic/
+transform: mel
+
+device_list: [0,1,11,12,13,14]
+augment_device_list_used: [0,1,11,12,13,14]
+
+max_num_frames: 44100
+
+sample_rate: 44100
+n_fft: 512
+hop_length: 128
+n_mels: 40
+resample_rate: 11025
+trim_duration: 0.5
+
+batch_size: 16
+val_batch_size: 16
+
+log_wandb: False
+
+# ----- mic augmentation param -----
+normalize_audio_data: False
+
+
+# -----  augmentation param -----
+augment_audio: False #True when doing single mic ablation study
+augment_num_channel: 6
+
+apply_augmentation: False #automatically apply augmentation during training
+augmentation_type: time_shift
+
+augment_test: False
+augment_timeshift: False # shifting dataset upon init
+
+augment_timemask: False
+augment_freqmask: False
+

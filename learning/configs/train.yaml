@@ -1,5 +1,5 @@
 # ----- wandb log parameters -----
-log_wandb: True
+log_wandb: False
 wandb_run_name: "6mic_normalize_aug_valnoaug"
 wandb_project: "audio_localization2"
 
@@ -27,6 +27,9 @@ model_path: /home/mark/audio_learning_project/models
 normalize_audio_data: True
 checkpoint_dir: ???
 
+batch_size: 16
+val_batch_size: 16
+
 # ----- augmentation param -----
 augment_audio: True #True when doing ablation study
 augment_num_channel: 6
@@ -37,11 +40,13 @@ augment_timeshift: False #manually shifting dataset upon init
 apply_augmentation: True #automatically apply augmentation during training
 augmentation_type: time_shift
 
+augment_timemask: True
+augment_freqmask: True
+
 # ----- training hypertuning parameters -----
 train_epochs: 400
 log_frequency: 10
 eval_frequency: 10
 
-batch_size: 16
-val_batch_size: 16
+
 
