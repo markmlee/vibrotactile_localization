@@ -83,7 +83,7 @@ def main():
         rate.sleep()
 
     #save q, q_d, ee_pose
-    path_name = "/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/"
+    path_name = "/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/"
     filenameq = os.path.join(path_name, "recorded_q.npy")
     filenameq_d = os.path.join(path_name, "recorded_q_d.npy")
     filenameee_pose = os.path.join(path_name, "recorded_ee_pose.npy")

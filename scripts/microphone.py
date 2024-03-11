@@ -114,7 +114,7 @@ class Microphone:
         with contextlib.ExitStack() as stack:
             for stream in self.stream_sd_list:
                 stack.enter_context(stream)
-            print(f"Recording for {duration} seconds...")
+            # print(f"Audio: Recording for {duration} seconds...")
             try:
                 while time.time() - start_time < duration:
                     for i in range(self.number_of_mics):

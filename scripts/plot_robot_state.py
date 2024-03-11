@@ -3,7 +3,7 @@ import numpy as np
 import sys
 
 def plot_entire_state():
-    load_file_x = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_ee_pose.npy'
+    load_file_x = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_ee_pose.npy'
 
     ee_t_list = np.load(load_file_x, allow_pickle=True)
     print(f"size of recorded_ee_pose: {len(ee_t_list)}") #--> 100 * recording duration of entire motion
@@ -43,10 +43,10 @@ def plot_entire_state():
 
 
 def plot_xt():
-    load_file_x = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_x_trajectory.npy'
-    load_file_xdot = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_xdot_trajectory.npy'
-    load_file_x_des = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_x_des_trajectory.npy'
-    load_file_xdot_des = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_xdot_des_trajectory.npy'
+    load_file_x = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_x_trajectory.npy'
+    load_file_xdot = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_xdot_trajectory.npy'
+    load_file_x_des = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_x_des_trajectory.npy'
+    load_file_xdot_des = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_xdot_des_trajectory.npy'
 
     x_t = np.load(load_file_x)
     xdot_t = np.load(load_file_xdot)
@@ -81,7 +81,7 @@ def plot_xt():
     plt.show()
 
 def plot_xdot_t_all_trials():
-    load_file_xdot = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_xdot_trajectory.npy'
+    load_file_xdot = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_xdot_trajectory.npy'
     xdot_t = np.load(load_file_xdot)
 
     trials = len(xdot_t)
@@ -100,7 +100,7 @@ def plot_xdot_t_all_trials():
 
 
 def plot_qt():
-    load_q_file = '/home/iam-lab/audio_localization/audio_datacollection/data/franka_init_test_6mic/recorded_q_trajectory.npy'
+    load_q_file = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_q_trajectory.npy'
     recorded_q_trajectory = np.load(load_q_file, allow_pickle=True)
 
     #[q_t, qd_t] for each trial
@@ -110,6 +110,6 @@ def plot_qt():
     print(f"shapes: {recorded_q_trajectory[0][0].shape, recorded_q_trajectory[0][1].shape}") #--> ((32990, 7), (32990, 7)) ??? why not 40,000 since 200hz x 2 sec x 10 tirals
 
 
-# plot_xt()
-plot_entire_state()
-# plot_xdot_t_all_trials()
+plot_xt()
+plot_xdot_t_all_trials()
+# plot_entire_state()

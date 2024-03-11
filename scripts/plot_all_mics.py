@@ -99,22 +99,20 @@ def main():
     
 
 
-    # plot data0 and data1 in same plot
     # Create a time array for plotting
     time = np.arange(0, len(data_list[0])) / fs
 
-    plt.figure(figsize=(10, 6))
+    fig, axs = plt.subplots(6, sharex=True, figsize=(10, 6))
 
-    #plot data_list
-    for i in range(mic_number):
-        plt.plot(time, data_list[i], label=f"mic{i}")
+    # plot data_list
+    for i in range(6):
+        axs[i].plot(time, data_list[i], label=f"mic{i}")
+        axs[i].set_title(f'Audio Data for mic{i}')
+        axs[i].set_ylabel('Amplitude')
+        if i == 5:  # Only label x-axis on bottom subplot
+            axs[i].set_xlabel('Time [s]')
 
-
-    plt.title('Audio Data')
-    plt.xlabel('Time [s]')
-    plt.ylabel('Amplitude')
     plt.legend()
-
     plt.show()
     
 
