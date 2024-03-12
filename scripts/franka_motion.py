@@ -28,17 +28,19 @@ class FrankaMotion:
         self.franka.reset_joints(duration=10)
 
         # #go to init pose where j6 is 90 degrees
-        init_joints = [0,  -8.44859e-01,  0, -2.431180e+00,  0,  3.14159e+00, 7.84695e-01] #j6 = 90 degrees from reset pose
+        # init_joints = [0,  -8.44859e-01,  0, -2.431180e+00,  0,  3.14159e+00, 7.84695e-01] #j6 = 90 degrees from reset pose
         # init_joints = [-0.6140042477755041, -0.9133502268939996, 0.5870043861405891, -2.3453908448474925, 1.9926752161905008, 2.9358218419186985, -0.6770297919229847]
+        init_joints = [1.4214274797776991, -0.5763641740554059, -0.043137661899913825, -2.3137106815621444, -0.04326450534330474, 1.7162178359561493, 0.40052493558290536] # table top config 
         self.franka.goto_joints(init_joints, duration=10, ignore_virtual_walls=True)
  
 
-    def go_to_init_recording_pose(self):
+    def go_to_init_recording_pose(self, duration=10):
         print(f"go to init recording pose")
+
         #set goal pose to be [T: 0.475, 0.05, 0.7], [R: 0,0.707,0,0.707] 
         init_record_pose = RigidTransform(
-            translation=np.array([0.470, 0.05, 0.7]), #0.05 offset added for safety when restoring this init position
-            rotation= RigidTransform.rotation_from_quaternion([0,0.707,0,0.707]),
+            translation=np.array([0.10, 0.35, 0.45]), #0.05 offset added for safety when restoring this init position
+            rotation= RigidTransform.rotation_from_quaternion([0,0.707,707,0]),
             from_frame='franka_tool', to_frame='world')
 
 
@@ -53,14 +55,14 @@ class FrankaMotion:
     def tap_stick_joint(self, duration, goal_j1_angle=3.0):
         #move j1
         joints = self.franka.get_joints()
-        joints[0] -= np.deg2rad(goal_j1_angle)
-        self.franka.goto_joints(joints, duration=duration, ignore_virtual_walls=True, block=False)
+        joints[0] += np.deg2rad(goal_j1_angle)
+        self.franka.goto_joints(joints, duration=duration, use_impedance=False, ignore_virtual_walls=True, block=False, joint_impedances = [3000, 3000, 3000, 3000, 3000, 3000, 3000])
 
     def move_away_from_stick_joint(self, duration):
         #move j1
         joints = self.franka.get_joints()
-        joints[0] += np.deg2rad(3)
-        self.franka.goto_joints(joints, duration=duration, ignore_virtual_walls=True)
+        joints[0] -= np.deg2rad(3)
+        self.franka.goto_joints(joints, duration=duration, use_impedance=False, ignore_virtual_walls=True)
 
     def move_away_from_stick(self, distanceY):
         #move in +Y
@@ -68,13 +70,16 @@ class FrankaMotion:
         current_pose.translation += np.array([0, distanceY, 0])
         self.franka.goto_pose(current_pose, use_impedance=False, ignore_virtual_walls=True)
 
-    def move_along_pipe(self, x=0.45,y=0.0, current_ee_RigidTransform_rotm=RigidTransform.rotation_from_quaternion([0,0.707,0,0.707])): 
+    def move_along_pipe(self,x=0.10,y=0.35, z=0.45, current_ee_RigidTransform_rotm=RigidTransform.rotation_from_quaternion([0,0.707,0.707,0])): 
 
         new_record_pose = RigidTransform(
-            translation=np.array([x, y, 0.7]),
+            translation=np.array([x, y, z]),
             rotation= current_ee_RigidTransform_rotm,
             from_frame='franka_tool', to_frame='world')
         self.franka.goto_pose(new_record_pose, use_impedance=False, ignore_virtual_walls=True)
+
+
+       
 
     def rotate_j7(self, j7_radian):
         joints = self.franka.get_joints()
@@ -84,8 +89,8 @@ class FrankaMotion:
     def get_joints(self):
         return self.franka.get_joints()
     
-    def go_to_joint_position(self, joints):
-        self.franka.goto_joints(joints, ignore_virtual_walls=True)
+    def go_to_joint_position(self, joints, duration):
+        self.franka.goto_joints(joints, ignore_virtual_walls=True, duration=duration)
 
     def get_ee_pose(self):
         return self.franka.get_pose()

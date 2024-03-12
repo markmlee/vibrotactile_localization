@@ -20,13 +20,14 @@ channels_in = 1
 
 record_duration = 2 #seconds for audio, trajectory recording
 wait_duration = record_duration
-distance_sample_count = 50 #number of samples to take along the height
-radian_sample_count = 31 #number of samples to take along the radian 
-total_repeat_count = 3 #number of times to repeat the 2D motion
+distance_sample_count = 25 #number of samples to take along the height
+radian_sample_count = 15 #number of samples to take along the radian 
+total_repeat_count = 1 #number of times to repeat the 2D motion
 
 total_trial_count = 0
+end_trial_count = distance_sample_count * radian_sample_count * total_repeat_count
 
-goal_j1_angle_min, goal_j1_angle_max = 3.0, 5.5 #degrees for tap stick joint
+goal_j1_angle_min, goal_j1_angle_max = 5.0, 7.0 #degrees for tap stick joint
 j7_radian_min, j7_radian_max = -2.7, 2.7 #radians for tap stick joint
 
 cylinder_length = 0.203 #meters along the cylinder to traverse
@@ -48,7 +49,7 @@ def record_with_datalogger(record_duration):
     return q_t, qdot_t, ee_pose_t
 
 
-def tap_along_1D_cylinder(franka_robot, x_along_cylinder, init_x, current_ee_RigidTransform_rotm, gt_label_rad):
+def tap_along_1D_cylinder(franka_robot, z_along_cylinder, init_z, current_ee_RigidTransform_rotm, gt_label_rad):
     """
     motion to traverse along the cylinder in 1D line.
     record audio and traj data at each point
@@ -68,16 +69,22 @@ def tap_along_1D_cylinder(franka_robot, x_along_cylinder, init_x, current_ee_Rig
         #get ground truth label [distance along cylinder, joint 6]
 
         #current pose x - init pose x
-        distance = x_along_cylinder[i] #[0.45, 0.45+0.203] robot EE global --> 
-        gt_label = [distance-init_x,gt_label_rad] #[0, 0.203] height, and [-2.7, 2.7] radian
+        distance = z_along_cylinder[i] #[0.45, 0.45+0.203] robot EE global --> 
+        gt_label = [init_z-distance,gt_label_rad] #[0, 0.203] height, and [-2.7, 2.7] radian
 
-        # move robot 
-        franka_robot.move_along_pipe(x_along_cylinder[i], 0, current_ee_RigidTransform_rotm)
+        print(f" ---- #5. moving to {distance} along the cylinder ----")
+        franka_robot.move_along_pipe(x=0.10, y=0.35, z= z_along_cylinder[i], current_ee_RigidTransform_rotm = current_ee_RigidTransform_rotm)
+
+        # store joint position
+        joints_before_contact = franka_robot.get_joints() 
+
+
+        time.sleep(1.5) #wait until skill is sufficiently executed
         
         #randomly choose an angle from 3.0 to 5.5 
         goal_j1_angle = np.random.uniform(goal_j1_angle_min, goal_j1_angle_max)
-        print(f"goal_j1_angle: {goal_j1_angle}")
 
+        print(f" ---- #6. tapping stick joint at {goal_j1_angle} ----")
         franka_robot.tap_stick_joint(duration=record_duration/2, goal_j1_angle = goal_j1_angle)
 
         # Create a Thread object and start it
@@ -95,13 +102,16 @@ def tap_along_1D_cylinder(franka_robot, x_along_cylinder, init_x, current_ee_Rig
 
 
         # time.sleep(wait_duration/2) #wait for mic to finish recording before calling next skill
-        franka_robot.move_away_from_stick_joint(duration=record_duration/2)
+        # franka_robot.move_away_from_stick_joint(duration=record_duration/2)
+
+        # restore joint positions after tap
+        franka_robot.go_to_joint_position(joints_before_contact, duration=2)
 
         #increment trial count
         total_trial_count += 1
 
         #print only up to 4 decimal places
-        print(f" trial {i}/{distance_sample_count-1}")
+        print(f" trial {i}/{distance_sample_count-1}. Current status trial: {total_trial_count}/{end_trial_count}")
 
         #append data to list
         x_t_list.append(x_t)
@@ -120,16 +130,19 @@ def main():
 
     #init franka robot
     franka_robot = FrankaMotion()
+
+    print(f" ===== #1. go to initial pose =====")
     franka_robot.go_to_init_pose()
+    print(f" ===== #2. go to initial recording pose =====")
     franka_robot.go_to_init_recording_pose()
 
-
+    
     #get inital recording x,y position
     initial_recording_pose = franka_robot.get_ee_pose()
-    init_x, init_y = initial_recording_pose.translation[0], initial_recording_pose.translation[1]
+    init_y, init_z = initial_recording_pose.translation[1], initial_recording_pose.translation[2]
 
     #distance along cylinder in 10 evenly spaced intervals from [0 to 20.3]
-    x_along_cylinder = np.linspace(init_x, init_x+cylinder_length, distance_sample_count)
+    z_along_cylinder = np.linspace(init_z, init_z-cylinder_length, distance_sample_count)
 
     #radian angle in 5 evenly spaced intervals from [-2.8 to 2.8]
     radian_along_cylinder = np.linspace(j7_radian_min, j7_radian_max, radian_sample_count)
@@ -145,28 +158,32 @@ def main():
     q_t_list_2D = [] # [(200xT, 7), ..., (200xT, 7)]
     q_tau_list_2D = [] # [(200xT, 7), ..., (200xT, 7)]
 
-    for repeat in total_repeat_count:
+    for repeat in range(total_repeat_count):
         
         print(f" ************** repeat: {repeat}/{total_repeat_count} total repeats **************")
-        franka_robot.go_to_init_recording_pose()
+        print(f" ===== #3N. go to initial recording pose =====")
+        franka_robot.go_to_init_recording_pose(duration=5)
 
         #--------------------------- data motion to traverse along the cylinder 2D [height, radian] ---------------------------
         for i in range(radian_sample_count):
 
             print(f" i: {i} / {radian_sample_count} total radian samples")
-            #go to initial recording joint position
-            franka_robot.go_to_joint_position(robot_joints_restore_position)
+
+            #go to initial joint position
+            franka_robot.go_to_joint_position(robot_joints_restore_position, duration=10)
 
             #go to j7 angle in array
-            print(f"rotating j7 to {radian_along_cylinder[i]}")
+            print(f"#4. rotating j7 to {radian_along_cylinder[i]}")
             franka_robot.rotate_j7(radian_along_cylinder[i])
             gt_label_rad = radian_along_cylinder[i]
 
             #get current ee quaternion
             current_ee_RigidTransform_rotm = franka_robot.get_ee_pose().rotation
 
+            
+
             #--------------------------- record trajectory and audio at each point along the cylinder ---------------------------
-            x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau = tap_along_1D_cylinder(franka_robot, x_along_cylinder, init_x, current_ee_RigidTransform_rotm, gt_label_rad)
+            x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau = tap_along_1D_cylinder(franka_robot, z_along_cylinder, init_z, current_ee_RigidTransform_rotm, gt_label_rad)
 
             x_t_list_2D.extend(x_t)
             xdot_t_list_2D.extend(xdot_t)
