@@ -10,7 +10,7 @@ def plot_entire_state():
     print(f"size of recorded_ee_pose: {len(ee_t_list)}") #--> 100 * recording duration of entire motion
 
     #take only first 1/10th of the data
-    shorthened_length_ratio = 1.1
+    shorthened_length_ratio = 2.0
     shorthened_length = int(len(ee_t_list)/shorthened_length_ratio)
     ee_t_list = ee_t_list[:shorthened_length]
 
@@ -74,7 +74,7 @@ def plot_entire_state():
     # axs[1].set_ylim(-5.5, 5.5)
     # axs[2].set_ylim(-85, -75)
 
-    
+
 
     axs[0].plot(t, euler_t[:,0], label='rx')
     axs[1].plot(t, euler_t[:,1], label='ry')

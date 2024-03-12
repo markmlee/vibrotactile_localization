@@ -56,7 +56,7 @@ class FrankaMotion:
         #move j1
         joints = self.franka.get_joints()
         joints[0] += np.deg2rad(goal_j1_angle)
-        self.franka.goto_joints(joints, duration=duration, use_impedance=False, ignore_virtual_walls=True, block=False, joint_impedances = [3000, 3000, 3000, 3000, 3000, 3000, 3000])
+        self.franka.goto_joints(joints, duration=duration, use_impedance=False, ignore_virtual_walls=True, block=False, joint_impedances = [1000, 4000, 4000, 4000, 4000, 4000, 4000])
 
     def move_away_from_stick_joint(self, duration):
         #move j1
