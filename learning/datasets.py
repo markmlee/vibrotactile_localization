@@ -58,6 +58,9 @@ class AudioDataset(Dataset):
 
         #get all directory path to trials
         self.dir = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
+
+        #filter out directory that does not start with 'trial'
+        self.dir = [d for d in self.dir if d.split('/')[-1].startswith('trial')]
         
         #load data (for multiple mics in device list, get wav files)
         len_data = len(self.dir)
@@ -214,10 +217,16 @@ class AudioDataset(Dataset):
             
         #get label from directory 
         label_file = f"{self.dir[trial_n]}/gt_label.npy"
-        label = np.load(label_file) #--> [distance along cylinder, joint 6]
+        label = np.load(label_file) #--> [distance along cylinder, joint 6] i.e. [0.0 m, -2.7 radian]
 
         #convert label m unit to cm
         label[0] = label[0] * 100
+
+        # #convert radian to x,y coordinate with unit 1
+        # x,y  = np.cos(label[1]), np.sin(label[1])
+        # label = [label[0], x, y] # converted radian for continuous 0 to 2pi representation in xy coordinate
+        # #convert to tensor
+        # label = torch.tensor(label, dtype=torch.float32)
 
         return data, label
     
@@ -373,6 +382,9 @@ class AudioDataset_test(Dataset):
 
         #get all directory path to trials
         self.dir = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
+        
+        #filter out directory that does not start with 'trial'
+        self.dir = [d for d in self.dir if d.split('/')[-1].startswith('trial')]
         
         #load data (for multiple mics in device list, get wav files)
         len_data = len(self.dir)

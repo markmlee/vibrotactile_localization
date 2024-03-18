@@ -36,28 +36,84 @@ from datasets import plot_spectrogram
 import matplotlib.pyplot as plt
 
 def plot_regression(cfg, y_pred_list, y_val_list):
-    #plot regression line
-    import matplotlib.pyplot as plt
+    #plot regression line for height, x, y 
+
+    #given list of [[height, x,y]..] extract height from 1st element of list, x from 2nd element, y from 3rd element
+    height = [item[0] for item in y_val_list]
+    radian = [item[1] for item in y_val_list]
+    
+    height_pred = [item[0] for item in y_pred_list]
+    radian_pred = [item[1] for item in y_pred_list]
+
     # Initialize layout
     fig, ax = plt.subplots(figsize = (9, 9))
-    #add scatter plot
-    ax.scatter(y_val_list, y_pred_list, alpha=0.7, edgecolors='k')
+    #add scatter plot for 1st element (height)
+    ax.scatter(height, height_pred, alpha=0.7, edgecolors='k')
     #add regression line
-    b,a, = np.polyfit(y_val_list, y_pred_list, deg=1)
-    xseq = np.arange(0,len(y_val_list),1)
+    b,a, = np.polyfit(height, height_pred, deg=1)
+    xseq = np.arange(0,len(height),1)
     ax.plot(xseq, a + b * xseq, color = 'r', lw=2.5)
 
-    plt.title('Regression plot')
-    plt.xlabel('y_val')
-    plt.ylabel('y_pred')
+    plt.title('Regression plot 1D line')
+    plt.xlabel('height_val')
+    plt.ylabel('height_pred')
 
+    #set x and y axis limits
+    plt.xlim(0, 25)
+    plt.ylim(0, 25)
 
     #save the regression plot in output directory
     if cfg.visuaize_regression:
         plt.savefig(os.path.join(cfg.checkpoint_dir, 'height_plot.png'))
         plt.show()
 
-    
+    fig, ax = plt.subplots(figsize = (9, 9))
+    #add scatter plot for 1st element (height)
+    ax.scatter(radian, radian_pred, alpha=0.7, edgecolors='k')
+    #add regression line
+    b,a, = np.polyfit(radian, radian_pred, deg=1)
+    xseq = np.arange(0,len(height),1)
+    ax.plot(xseq, a + b * xseq, color = 'r', lw=2.5)
+
+    plt.title('Regression plot radians')
+    plt.xlabel('rad_val')
+    plt.ylabel('rad_pred')
+
+    #set x and y axis limits
+    plt.xlim(-2*np.pi, 2*np.pi)
+    plt.ylim(-2*np.pi, 2*np.pi)
+
+    #save the regression plot in output directory
+    if cfg.visuaize_regression:
+        plt.savefig(os.path.join(cfg.checkpoint_dir, 'radian_plot.png'))
+        plt.show()
+
+    #convert radian to x,y coordinates
+    x_pred = np.cos(radian_pred)
+    y_pred = np.sin(radian_pred)
+
+    x = np.cos(radian)
+    y = np.sin(radian)
+
+    #add a new scatter plot for x,y 
+    fig, ax = plt.subplots(figsize = (9, 9))
+
+    ax.scatter(x_pred,y_pred, alpha=0.7, c='g' ,edgecolors='k')
+    ax.scatter(x,y, alpha=0.7,c='r' ,edgecolors='k')
+
+    plt.title('Regression plot for radians (x,y coordinates)')
+    plt.xlabel('x')
+    plt.ylabel('y')
+
+    #add legend
+    plt.legend(['y_pred', 'y_val'])
+
+    #save the regression plot in output directory
+    if cfg.visuaize_regression:
+        plt.savefig(os.path.join(cfg.checkpoint_dir, 'xy_plot_radians.png'))
+        plt.show()
+
+
 
 
 
@@ -187,13 +243,25 @@ def train_CNN(cfg,device, wandb, logger):
 
             optimizer.zero_grad()
             y_pred = model(x_train) # --> CNN single-head output
-            # print(f"y values: {y_train}, y_pred: {y_pred}")
+            print(f"y values: {y_train}, y_pred: {y_pred}")
             train_loss = criterion(y_pred, y_train)
 
             # height, radian = model(x_train) # --> CNN separate-head output
 
             # print(f"height: {height}, radian: {radian}") # --> torch.Size([80, 1]), torch.Size([80, 1])
             # print(f"y_train[:,0] : {y_train[:,0]}, y_train[:,1]: {y_train[:,1]}") # --> torch.Size([80]), torch.Size([80])
+
+            #reshape height and radian to be same shape as y_train
+            height = height.view(-1)
+            radian = radian.view(-1)
+            
+
+            
+            #separate loss for each output. L1 loss for height, MSE for radians
+            train_loss_height = criterion_height(height, y_train[:,0])
+            train_loss_radian = criterion_radian(radian, y_train[:,1])
+
+            train_loss = weight_height * train_loss_height + weight_radian * train_loss_radian
 
             train_loss.backward()
             optimizer.step()
@@ -222,8 +290,21 @@ def train_CNN(cfg,device, wandb, logger):
                 
                 x_val, y_val = x_val.float().to(device), y_val.float().to(device)
                 with torch.no_grad():
-                    y_pred = model(x_val)
-                    val_loss = criterion(y_pred, y_val)
+                    # y_pred = model(x_val)
+                    # val_loss = criterion(y_pred, y_val)
+
+                    height, radian = model(x_val) # --> CNN separate-head output
+
+                    #reshape height and radian to be same shape as y_val
+                    height = height.view(-1)
+                    radian = radian.view(-1)
+
+                    
+                    #separate loss for each output. L1 loss for height, MSE for radians
+                    val_loss_height = criterion_height(height, y_val[:,0])
+                    val_loss_radian = criterion_radian(radian, y_val[:,1])
+
+                    val_loss = weight_height * val_loss_height + weight_radian * val_loss_radian
 
                     epoch_val_loss += val_loss.item()
                 
@@ -320,28 +401,37 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
     """
     model.eval()
 
-    error = 0
+    height_error, radian_error = 0,0
     y_val_list = []
     y_pred_list = []
 
     for _, (x, y) in enumerate(tqdm(val_loader)):
 
-        x_val, y_val = x.to(device), y.to(device)
+        x_val, y_val = x.float().to(device), y.float().to(device)
 
     
         with torch.no_grad():
-            y_pred = model(x_val)
+            height, radian = model(x_val) # --> CNN separate-head output
 
-            #use only first column element of y_pred and y_val
-            y_pred = y_pred[:,0]
-            y_val = y_val[:,0]
+            #reshape height and radian to be same shape as y_val
+            height = height.view(-1)
+            radian = radian.view(-1)
+
 
             # print(f"y_pred: {y_pred}, y_val: {y_val}")
-            y_diff = y_pred - y_val
-            print(f"y_diff: {y_diff}")
+            # y_diff = y_pred - y_val
+            # print(f"y_diff: {y_diff}")
+
+            height_diff = height - y_val[:,0]
+            radian_diff = radian - y_val[:,1]
+        
 
             #get absolute error
-            error += torch.mean(torch.abs(y_diff))
+            height_error += torch.mean(torch.abs(height_diff)) 
+            radian_error += torch.mean(torch.abs(radian_diff))
+
+            #combine height and radian to y_pred
+            y_pred = torch.stack((height, radian), dim=1)
         
         #get tensor values and append them to list
         y_val_list.extend(y_val.cpu().numpy())
@@ -349,9 +439,12 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
         
             
     #sum up the rmse and divide by number of batches
-    error = error / len(val_loader)
+    height_error = (height_error) / len(val_loader)
+    radian_error = (radian_error) / len(val_loader)
 
-    logger.log(f"Mean Absolute Error: {error}")
+    error = height_error + radian_error
+
+    logger.log(f"Height Error: {height_error}, Radian Error: {radian_error}")
 
     if cfg.visuaize_regression:
         #plot regression line

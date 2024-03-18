@@ -1,13 +1,13 @@
 # ----- wandb log parameters -----
-log_wandb: False
-wandb_run_name: "baseline_6mic_noaug"
-wandb_project: "audio_localization3"
+log_wandb: True
+wandb_run_name: "2heads_normalization_time_aug"
+wandb_project: "audio_localization_2D"
 
 
-data_dir: /home/mark/audio_learning_project/data/franka_init_test_6mic/
+data_dir: /home/mark/audio_learning_project/data/franka_2D_localization/
 transform: mel
 
-device_list: [0,1,11,12,13,14]
+device_list: [9,10,11,12,13,14]
 max_num_frames: 44100
 
 sample_rate: 44100
@@ -24,27 +24,27 @@ visuaize_regression: True
 # ----- training parameters -----
 
 model_path: /home/mark/audio_learning_project/models
-normalize_audio_data: False
+normalize_audio_data: True
 checkpoint_dir: ???
 
 batch_size: 16
 val_batch_size: 16
 
 # ----- augmentation param -----
-augment_audio: True #True when doing ablation study
+augment_audio: False #True when doing ablation study
 augment_num_channel: 6
-augment_device_list_used: [0,1,11,12,13,14]
+augment_device_list_used: [9,10,11,12,13,14]
 
-augment_timeshift: False #manually shifting dataset upon init
+augment_timeshift: True #manually shifting dataset upon init
 
 apply_augmentation: True #automatically apply augmentation during training
 augmentation_type: time_shift
 
-augment_timemask: True
-augment_freqmask: True
+augment_timemask: False
+augment_freqmask: False
 
 # ----- training hypertuning parameters -----
-train_epochs: 200
+train_epochs: 1000
 log_frequency: 10
 eval_frequency: 10
 

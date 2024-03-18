@@ -48,6 +48,33 @@ def plot_time_domain(data_list, fs):
 
     plt.show()
 
+def grid_plot_1mic_all_trials(data_list, fs):
+    """
+    plot 1 mic for all trials in a 10x1 grid
+    """
+
+    trial_number = len(data_list)
+    print(f"trial_number: {trial_number}")
+
+    #trim to the shortest length
+    min_length = min(len(data_list[i]) for i in range(trial_number))
+    for i in range(trial_number):
+        data_list[i] = data_list[i][:min_length]
+
+    print(f" ------ plotting wav files ------  ")
+    # Plot the time domain for all 10 trials, mic1
+    fig, axs = plt.subplots(trial_number, 1, figsize=(15, 10), tight_layout=True)
+    fig.suptitle('Audio Data for all 100 trials [::5], mic1')
+
+    for i in range(trial_number):
+        axs[i].plot(data_list[i])
+        axs[i].set_title(f"trial{i}")
+        axs[i].set_ylabel('Amplitude')
+        if i == 9:
+            axs[i].set_xlabel('Time [s]')
+
+    plt.show()
+
 def grid_plot_time_domain(data_list, fs):
     """
     subplot 3x2 grid of time domain plots. 
@@ -172,8 +199,32 @@ def grid_plot_spectrogram(data_list, fs):
         
     plt.show()
 
+def plot_spectrogram_of_all_data( data, fs):
+    """
+    plot spectrogram of only mic1 for all trials. 
+    plot in 10x1 grid tight layout"
+    """
 
+    trial_number = len(data)
+    print(f"trial_number: {trial_number}")
 
+    #trim to the shortest length
+    min_length = min(len(data[i]) for i in range(trial_number))
+    for i in range(trial_number):
+        data[i] = data[i][:min_length]
+
+    print(f" ------ plotting spectrogram for all trials ------  ")
+    # Plot the spectrogram for all 10 trials, mic1
+    fig, axs = plt.subplots(trial_number, 1, figsize=(15, 10), tight_layout=True)
+    fig.suptitle('Mel-Spectrogram for all trials, mic1')
+
+    for i in range(trial_number):
+        # convert to spectrogram
+        img = get_spectrogram(data[i], fs)
+        axs[i].set_title(f"trial{i}")
+        fig.colorbar(img, ax=axs[i], format='%+2.0f dB')
+
+    plt.show()
    
 
 def plot_wav_files(devicelist, trial_number, load_path, fs=44100):

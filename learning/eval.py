@@ -80,14 +80,14 @@ def main(cfg: DictConfig):
 
     model.eval()
 
-    error = 0
+    height_error, radian_error = 0,0
     y_val_list = []
     y_pred_list = []
 
     for _, (x, y) in enumerate(tqdm(val_loader)):
 
         #plot spectrogram for all data
-        plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
+        # plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
         # sys.exit()
 
         #plot spectrogram for visualization
@@ -98,18 +98,23 @@ def main(cfg: DictConfig):
         y_val = y
 
         with torch.no_grad():
-            y_pred = model(x_val)
+            height, radian = model(x_val) # --> CNN separate-head output
 
-            #use only first column element of y_pred and y_val
-            y_pred = y_pred[:,0]
-            y_val = y_val[:,0]
+            #reshape height and radian to be same shape as y_val
+            height = height.view(-1)
+            radian = radian.view(-1)
 
-            # print(f"y_pred: {y_pred}, y_val: {y_val}")
-            y_diff = y_pred - y_val
-            print(f"y_diff: {y_diff}")
+            height_diff = height - y_val[:,0]
+            radian_diff = radian - y_val[:,1]
+        
 
             #get absolute error
-            error += torch.mean(torch.abs(y_diff))
+            height_error += torch.mean(torch.abs(height_diff)) 
+            radian_error += torch.mean(torch.abs(radian_diff))
+
+            #combine height and radian to y_pred
+            y_pred = torch.stack((height, radian), dim=1)
+
         
         #get tensor values and append them to list
         y_val_list.extend(y_val.cpu().numpy())
@@ -117,13 +122,19 @@ def main(cfg: DictConfig):
         
             
     #sum up the rmse and divide by number of batches
-    error = error / len(val_loader)
+    height_error = (height_error) / len(val_loader)
+    radian_error = (radian_error) / len(val_loader)
 
+    error = height_error + radian_error
     print(f"Mean Absolute Error: {error}")
 
+    #save y_pred and y_val npy files
+    np.save('y_pred.npy', y_pred_list)
+    np.save('y_val.npy', y_val_list)
+    
     
     #plot regression line
-    plot_regression(y_pred_list, y_val_list)
+    plot_regression(cfg,y_pred_list, y_val_list)
 
 
     return error

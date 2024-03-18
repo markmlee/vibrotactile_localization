@@ -42,7 +42,7 @@ def load_data_and_plot():
     # -----------------------------------------------------------
     #plot all 6 wav files
         
-    mics_to_plot = [0,1,2,3,4,5] #index 0,1,2,3,4,5 -> mic 0,1,11,12,13,14
+    mics_to_plot = [0] #index 0,1,2,3,4,5 -> mic 0,1,11,12,13,14
 
     #load all wav files from dataset (all mic, all trials)
     mics_all_trials = microphone_utils.load_wav_files_from_dataset(devicelist, total_trial_count, save_path_data)
@@ -53,17 +53,17 @@ def load_data_and_plot():
     for i in mics_to_plot:
         data_list.append(mics_all_trials[i])
 
-    microphone_utils.grid_plot_time_domain(data_list, fs)
+    # microphone_utils.grid_plot_time_domain(data_list, fs)
         
     # -----------------------------------------------------------
 
-    #plot spectrogram of data_list[0]
-    # microphone_utils.plot_spectrogram(data_list[0], fs)
+        
 
 def main():
     print(f" ------ starting script ------  ")
 
     # load_data_and_plot()
+    # sys.exit()
     # -----------------------------------------------------------
 
     #create instance of microphone class
@@ -77,6 +77,21 @@ def main():
     #load all wav files from dataset (all mic, all trials)
     mics_all_trials = microphone_utils.load_wav_files_as_dataset(devicelist, total_trial_count, save_path_data)
     print(f"size of mics_all_trials: {len(mics_all_trials)}") #--> 100 trials
+
+    #sample 1 out of 10 trials from mic_all_trials
+    mics_all_trials = mics_all_trials[::5]
+
+
+    #iterate through all trials and only extract mic1 out of 6 mics
+    for i in range(len(mics_all_trials)):
+        mics_all_trials[i] = mics_all_trials[i][0]
+
+    print(f"size of mics_all_trials: {len(mics_all_trials)}") #--> 10 trials
+    
+    #plot each trial
+    microphone_utils.grid_plot_1mic_all_trials(mics_all_trials, 22050)
+
+    sys.exit()
 
     #load all labels from dataset (all trials)
     labels_all_trials = microphone_utils.load_labels_from_dataset(save_path_data, total_trial_count)

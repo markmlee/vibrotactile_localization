@@ -57,3 +57,18 @@ To record robot ee_pose, run in parallel of the recording script which subscribe
 ```
 python3 util_datalogging.py 
 ```
+
+## training from the collected dataset
+
+Move the dataset into specified directory. Use a GPU-installed desktop with pytorch (conda environment: pytorch3).
+Update the train.yaml for 1D line evaluation (corresponding dataset: franka_init_test_6mic), and train2D.yaml for 2D line evaluation (corresponding dataset: franka_2D_localization). 
+
+```
+python train.py 
+```
+
+## evaluating the trained model
+Update the eval.yaml or eval2D.yaml. Specify the desired model path.  
+```
+python eval.py 
+```

@@ -1,0 +1,43 @@
+#UPDATE PARAMS
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/2024-03-13/08-47-58
+
+
+
+# ----- mic / data param -----
+data_dir: /home/mark/audio_learning_project/data/franka_2D_localization/
+transform: mel
+
+device_list: [9,10,11,12,13,14]
+augment_device_list_used: [9,10,11,12,13,14]
+
+max_num_frames: 44100
+
+sample_rate: 44100
+n_fft: 512
+hop_length: 128
+n_mels: 40
+resample_rate: 11025
+trim_duration: 0.5
+
+batch_size: 16
+val_batch_size: 16
+
+log_wandb: False
+visuaize_regression: False
+# ----- mic augmentation param -----
+normalize_audio_data: False
+
+
+# -----  augmentation param -----
+augment_audio: False #True when doing single mic ablation study
+augment_num_channel: 6
+
+apply_augmentation: False #automatically apply augmentation during training
+augmentation_type: time_shift
+
+augment_test: False
+augment_timeshift: False # shifting dataset upon init
+
+augment_timemask: False
+augment_freqmask: False
+
