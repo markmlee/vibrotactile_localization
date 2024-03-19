@@ -125,9 +125,6 @@ class AudioDataset(Dataset):
             self.sample_rate = sample_rate
             # print(f"sample rate: {sample_rate}") #--> sample rate: 44100
 
-            #trim 0.5s from start and end of wav file
-            wav = wav[:, int(trim_lengths * sample_rate):int(-trim_lengths * sample_rate)]
-            
 
             #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
             if wav.size(1) < self.cfg.max_num_frames:
@@ -183,10 +180,6 @@ class AudioDataset(Dataset):
             self.sample_rate = sample_rate
             # print(f"sample rate: {sample_rate}") #--> sample rate: 44100
 
-            #trim 0.5s from start and end of wav file
-            wav = wav[:, int(self.cfg.trim_duration * sample_rate):int(-self.cfg.trim_duration * sample_rate)]
-            
-
             #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
             if wav.size(1) < self.cfg.max_num_frames:
                 wav = F.pad(wav, (0, self.cfg.max_num_frames - wav.size(1)), mode='circular'   )
@@ -207,12 +200,12 @@ class AudioDataset(Dataset):
 
         #stack mel spectrograms into a tensor of shape (num_mics, num_mels, num_samples)
         mel_tensor = torch.stack(melspecs, dim=0)
-        # print(f"size of mel_tensor: {mel_tensor.size()}") #--> size of data: torch.Size([6, 16, 442])
+        # print(f"size of mel_tensor: {mel_tensor.size()}") #--> size of data: torch.Size([6, 16, 690])
 
-        if cfg.transform == 'mel':
+        if self.cfg.transform == 'mel':
             data = mel_tensor
 
-        if cfg.transform == 'wav':
+        if self.cfg.transform == 'wav':
             data = wav_tensor
             
         #get label from directory 
@@ -234,7 +227,14 @@ class AudioDataset(Dataset):
         return len(self.dir)
     
     def __getitem__(self, idx):
-        x,y = self.X_mic_data[idx], self.Y_label_data[idx]
+        x,y = self.X_mic_data[idx], self.Y_label_data[idx] # --> x: full 2 sec wav/spectrogram
+
+        #TODO: trim the spectrogram to 1 sec
+        #TODO: time augmentation: time shift the audio 
+        # if self.cfg.transform == 'mel':
+            # print(f"size of x: {x.size()}") #--> size of x:  torch.Size([6, 16, 690]) --> torch.Size([6, 16, 345])
+            # sys.exit()
+
 
         #apply augmentation
         if self.cfg.apply_augmentation:
@@ -250,7 +250,11 @@ class AudioDataset(Dataset):
             freq_masking = T.FrequencyMasking(freq_mask_param=5)
             x = freq_masking(x)
 
-        
+        #crop the spectrogram to 1 sec centered around the center, should be total length of 345
+        input_len_time = x.size(2)
+        crop_len_time = int(input_len_time/2)
+        x = x[:,:,crop_len_time-172:crop_len_time+172]
+
 
         return x,y 
 
@@ -396,8 +400,8 @@ class AudioDataset_test(Dataset):
 
             x_data, y_label = self.load_xy_single_trial(self.cfg, trial_n)
 
-            # if cfg.augment_test:
-            #     x_data, y_label = self.load_xy_single_trial_with_augmentation(self.cfg, trial_n)
+            if cfg.augment_test:
+                x_data, y_label = self.load_xy_single_trial_with_augmentation(self.cfg, trial_n)
 
             self.X_mic_data.append(x_data)
             self.Y_label_data.append(y_label)
@@ -637,16 +641,10 @@ def load_data(cfg, train_or_val = 'val'):
     """
     Load the dataset and split it into train and validation
     """
-
-    if train_or_val == 'train':
-        dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augmentation = cfg.augmentation_type)
-
-    elif train_or_val == 'val':
-        dataset = AudioDataset_validation(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augmentation = None)
     
-    else:
-        print("Error: train_or_val should be either 'train' or 'val'")
-        sys.exit()
+    dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augmentation = cfg.augmentation_type)
+
+  
 
     #visuaize dataset
     if cfg.visuaize_dataset:
@@ -667,7 +665,7 @@ def load_data(cfg, train_or_val = 'val'):
             # plot mel spectrogram
             print(f"sample rate: {dataset.sample_rate}")
             plot_spectrogram(cfg, x, dataset.sample_rate)
-        sys.exit()
+        # sys.exit()
 
 
     # split the dataset into train and validation 80/20

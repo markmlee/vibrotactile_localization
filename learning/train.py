@@ -31,7 +31,7 @@ from models.CNN import CNNRegressor
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
-from datasets import plot_spectrogram
+from datasets import plot_spectrogram, plot_spectrogram_of_all_data
 
 import matplotlib.pyplot as plt
 
@@ -146,18 +146,9 @@ def train_CNN(cfg,device, wandb, logger):
     #define loss and optimizer
     criterion = torch.nn.L1Loss() #--> L1 loss using mean absolute error
 
-    #define separate loss for each output. L1 loss for height, MSE for radians
-    criterion_height = torch.nn.L1Loss()
-    criterion_radian = torch.nn.MSELoss()
-
-    #weight for each loss
-    weight_height = 0.1 #[0 to 20cm]
-    weight_radian = 1 #[-2pi to 2pi]
-
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)  # Adjust step_size and gamma as needed
-
 
     
     model.to(device)
@@ -179,9 +170,12 @@ def train_CNN(cfg,device, wandb, logger):
         model.train()
 
         for _, (x, y) in enumerate(train_loader):
-            x_train, y_train = x.float().to(device), y.float().to(device)
 
- 
+            if cfg.visuaize_dataset:
+                plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
+                sys.exit()
+
+            x_train, y_train = x.float().to(device), y.float().to(device)
 
             # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
 
@@ -189,11 +183,6 @@ def train_CNN(cfg,device, wandb, logger):
             y_pred = model(x_train) # --> CNN single-head output
             # print(f"y values: {y_train}, y_pred: {y_pred}")
             train_loss = criterion(y_pred, y_train)
-
-            # height, radian = model(x_train) # --> CNN separate-head output
-
-            # print(f"height: {height}, radian: {radian}") # --> torch.Size([80, 1]), torch.Size([80, 1])
-            # print(f"y_train[:,0] : {y_train[:,0]}, y_train[:,1]: {y_train[:,1]}") # --> torch.Size([80]), torch.Size([80])
 
             train_loss.backward()
             optimizer.step()
