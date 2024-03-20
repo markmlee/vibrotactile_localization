@@ -215,11 +215,15 @@ class AudioDataset(Dataset):
         #convert label m unit to cm
         label[0] = label[0] * 100
 
+        #normalize height to [0,1], and radian to [0,1]
+        # label[0] = label[0] / 20.32 #(8" to 20cm)
+        # label[1] = (label[1] + np.pi) / (2*np.pi) #[-pi,pi] to [0,1]
+
         # #convert radian to x,y coordinate with unit 1
-        # x,y  = np.cos(label[1]), np.sin(label[1])
-        # label = [label[0], x, y] # converted radian for continuous 0 to 2pi representation in xy coordinate
+        x,y  = np.cos(label[1]), np.sin(label[1])
+        label = [label[0], x, y] # converted radian for continuous 0 to 2pi representation in xy coordinate
         # #convert to tensor
-        # label = torch.tensor(label, dtype=torch.float32)
+        label = torch.tensor(label, dtype=torch.float32)
 
         return data, label
     
