@@ -15,6 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 import numpy as np
+import matplotlib.pyplot as plt
 
 #logger
 import logging
@@ -31,35 +32,21 @@ from models.CNN import CNNRegressor
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
-from datasets import plot_spectrogram, plot_spectrogram_of_all_data
+import eval_utils as eval_utils
 
-import matplotlib.pyplot as plt
-
-def plot_regression(cfg, y_pred_list, y_val_list):
-    #plot regression line
-    import matplotlib.pyplot as plt
-    # Initialize layout
-    fig, ax = plt.subplots(figsize = (9, 9))
-    #add scatter plot
-    ax.scatter(y_val_list, y_pred_list, alpha=0.7, edgecolors='k')
-    #add regression line
-    b,a, = np.polyfit(y_val_list, y_pred_list, deg=1)
-    xseq = np.arange(0,len(y_val_list),1)
-    ax.plot(xseq, a + b * xseq, color = 'r', lw=2.5)
-
-    plt.title('Regression plot')
-    plt.xlabel('y_val')
-    plt.ylabel('y_pred')
+#import function from another directory for plotting
+sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
+import microphone_utils as mic_utils
 
 
-    #save the regression plot in output directory
-    if cfg.visuaize_regression:
-        plt.savefig(os.path.join(cfg.checkpoint_dir, 'height_plot.png'))
-        plt.show()
+
+
+
+torch.manual_seed(42)
+np.random.seed(42)
+
 
     
-
-
 
 def train_KNN(cfg):
     """
@@ -122,7 +109,7 @@ def eval_KNN(cfg, model):
     mse,y_pred_list, y_val_list = model.mae(x_val, y_val)
 
     #plot regression line
-    plot_regression(y_pred_list, y_val_list)
+    eval_utils.plot_regression(y_pred_list, y_val_list)
 
 
     print(f" --------- evaluation complete ---------")
@@ -172,7 +159,7 @@ def train_CNN(cfg,device, wandb, logger):
         for _, (x, y) in enumerate(train_loader):
 
             if cfg.visuaize_dataset:
-                plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
+                mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
                 sys.exit()
 
             x_train, y_train = x.float().to(device), y.float().to(device)
@@ -297,7 +284,7 @@ def eval_random_prediction(cfg, device):
     print(f"size of y_pred_list, y_val_list: {len(y_pred_list)}, {len(y_val_list)}")
 
     #plot regression line
-    plot_regression(y_pred_list, y_val_list)
+    eval_utils.plot_regression(y_pred_list, y_val_list)
 
 
     return error
@@ -344,7 +331,7 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
     if cfg.visuaize_regression:
         #plot regression line
-        plot_regression(cfg, y_pred_list, y_val_list)
+        eval_utils.plot_regression(cfg, y_pred_list, y_val_list)
 
         
         
@@ -403,7 +390,7 @@ def eval_CNN(cfg, model,device, logger):
 
     if cfg.visuaize_regression:
         #plot regression line
-        plot_regression(y_pred_list, y_val_list)
+        eval_utils.plot_regression(y_pred_list, y_val_list)
 
 
     return error

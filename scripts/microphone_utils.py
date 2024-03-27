@@ -19,6 +19,101 @@ import time
 import wave
 import sys
 import librosa
+import torch
+import torchaudio
+
+
+
+def plot_spectrogram_with_cfg(cfg, data, fs):
+    """
+    subplot 3x2 grid of time domain plots. 
+    First column of 3 plots should be mic0,1,2
+    Second column of 3 plots should be mic3,4,5
+    """
+
+
+    # Plot the spectrogram for all 6 mics
+    fig, axs = plt.subplots(3, 2, figsize=(15, 10))
+    fig.suptitle('Mel-Spectrogram for all 6 mics')
+
+    for i,S in enumerate((data)):
+        if i < 3:
+            axs[i, 0].set_title(f"mic{i}")
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, ax=axs[i, 0], vmin=-80, vmax=0, 
+                                           hop_length=cfg.hop_length, n_fft=cfg.n_fft)
+            fig.colorbar(img, ax=axs[i, 0], format='%+2.0f dB')
+
+            
+            if i == 2:
+                axs[i, 0].set_xlabel('Time [s]')
+        else:
+            axs[i-3, 1].set_title(f"mic{i}")
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            img = librosa.display.specshow(S_dB,x_axis='time', y_axis='mel', sr=fs, ax=axs[i-3, 1], vmin=-80, vmax=0, 
+                                           hop_length=cfg.hop_length, n_fft=cfg.n_fft)
+            fig.colorbar(img, ax=axs[i-3, 1], format='%+2.0f dB')
+
+            if i == 5:
+                axs[i-3, 1].set_xlabel('Time [s]')
+        
+    plt.show()
+    
+def plot_spectrogram_of_all_data(cfg, data, fs):
+    """
+    plot spectrogram of 1st mic for all trials
+    [batch_size, mic, freq, time]
+    """
+
+    number_of_trials = len(data)
+
+    fig, axs = plt.subplots(number_of_trials, 1, figsize=(10, 4*number_of_trials))
+
+    for i in range(number_of_trials):
+        S = data[i][0] #just take the first mic
+        S_dB = librosa.power_to_db(S, ref=np.max)
+
+        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, vmin=-80, vmax=0, 
+                                       hop_length=cfg.hop_length, n_fft=cfg.n_fft, ax=axs[i])
+        fig.colorbar(img, ax=axs[i], format='%+2.0f dB')
+        axs[i].set_title(f'Spectrogram of trial {i+1}')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_fft(waves, sample_rate, device_list):
+        """
+        plot the fft of the waves to visualize background freq or signal freq components
+        """
+        background_fft = []
+
+        # Apply FFT to background noise to determine the frequency content
+        for i in range(len(waves)):
+            fft = torch.fft.rfft(waves[i])
+            background_fft.append(fft)
+
+        # Plot 6 subplots of background noise to see freq components
+        fig, axs = plt.subplots(6, 1, figsize=(10, 15))
+        fig.suptitle('Frequency Components of Background Noise')
+        
+        for i, ax in enumerate(axs):
+            if i < len(waves):
+                # Calculate magnitude of FFT and frequency bins
+                magnitude = torch.abs(background_fft[i])
+                frequency = torch.fft.rfftfreq(waves[i].shape[0], d=1/sample_rate)
+                
+                 # Plotting with black line color
+                ax.plot(frequency.numpy(), magnitude.numpy(), color='black')
+                ax.set_title(f'Mic {device_list[i]}', color='black')
+                ax.set_xlabel('Frequency (Hz)', color='black')
+                ax.set_ylabel('Magnitude', color='black')
+                ax.tick_params(colors='black')
+            else:
+                ax.set_visible(False)
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.show()
 
 def plot_time_domain(data_list, fs):
 

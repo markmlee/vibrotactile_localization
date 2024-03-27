@@ -67,50 +67,54 @@ class CNNRegressor2D(nn.Module):
         super(CNNRegressor2D, self).__init__()
         
         input_size = len(cfg.device_list)
-
         if cfg.augment_audio:
             input_size = cfg.augment_num_channel
-        output_size = 2
 
-        output_size_separate_heads_height = 1
-        output_size_separate_heads_radian = 1
-        output_size_separate_heads_xy = 2
-
-        # shared network
-        self.conv1 = nn.Conv2d(input_size, 6, 5)
+        self.conv1 = nn.Conv2d(input_size, 16, 3, padding=1)
+        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
+        self.conv3 = nn.Conv2d(32, 64, 3, padding=1)
+        # Removed conv4 and conv5 to prevent too much reduction in size
         self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.conv3 = nn.Conv2d(16, 64, 5)
-        # self.conv4 = nn.Conv2d(64, 128, 5)
-        # self.conv5 = nn.Conv2d(512, 512, 3)
-        # self.conv6 = nn.Conv2d(512, 128, 3)
-        self.fc1 = nn.Linear(2496, 120)
+        self.dropout = nn.Dropout(0.5)
 
-        #separate heads for distance and radian
-        self.fc_height = nn.Linear(120, output_size_separate_heads_height)
-        # self.fc_radians = nn.Linear(120, output_size_separate_heads_radian)
-        self.fc_radians = nn.Linear(120, output_size_separate_heads_xy)
-        
+        self.bn1 = nn.BatchNorm2d(16)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.bn3 = nn.BatchNorm2d(64)
+
+        # The number here (64 * x * y) needs to be calculated based on your input size and architecture
+        self.fc1 = nn.Linear(64 * 215, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 3)
+
+        # Output layers
+        # self.fc_height = nn.Linear(128, 1)
+        # self.fc_radians = nn.Linear(128, 1)
+
     def forward(self, xb):
+        # print(f"Input shape: {xb.shape}")
+        xb = self.pool(F.relu(self.bn1(self.conv1(xb))))
+        # print(f"Shape after conv1: {xb.shape}")
+        xb = self.pool(F.relu(self.bn2(self.conv2(xb))))
+        # print(f"Shape after conv2: {xb.shape}")
+        xb = self.pool(F.relu(self.bn3(self.conv3(xb))))
+        # print(f"Shape after conv3: {xb.shape}")
 
 
-        #shared  network
-        xb = self.pool(F.relu(self.conv1(xb)))
-        xb = self.pool(F.relu(self.conv2(xb)))
-        xb = self.pool(F.relu(self.conv3(xb)))
-        # xb = self.pool(F.relu(self.conv4(xb)))
-        # xb = self.pool(F.relu(self.conv5(xb)))
-        # xb = self.pool(F.relu(self.conv6(xb)))
         xb = torch.flatten(xb, 1)
         xb = F.relu(self.fc1(xb))
+        # print(f"Shape after fc1: {xb.shape}")
+        xb = self.dropout(xb)
+        xb = F.relu(self.fc2(xb))
+        # print(f"Shape after fc2: {xb.shape}")
+        xb = self.dropout(xb)
+        xb = F.relu(self.fc3(xb))
+        # print(f"Shape after fc3: {xb.shape}")
 
-        #separate heads for distance and radian
-        height = self.fc_height(xb)
-        radian = self.fc_radians(xb)
+        # height = self.fc_height(xb)
+        # radian = self.fc_radians(xb)
 
-        #normalize to [0,1]
-        # height = torch.sigmoid(height)
-        # radian = torch.sigmoid(radian)
+        #create 0s with same size as height
+        # zero_height = torch.zeros_like(height)
 
-        # return height, radian
-        return height, radian[:,0], radian[:,1]
+        # return height, radian[:,0], radian[:,1]
+        return xb
