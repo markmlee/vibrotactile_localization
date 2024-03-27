@@ -4,11 +4,11 @@ wandb_run_name: "baseline_6mic_preprocess"
 wandb_project: "audio_localization3"
 
 
-data_dir: /home/mark/audio_learning_project/data/franka_init_test_6mic/
+data_dir: /home/mark/audio_learning_project/data/franka_init_test_6mic/ #franka_2D_1line/
 background_dir: /home/mark/audio_learning_project/data/franka_constant/trial0/
 transform: mel
 
-device_list: [0,1,11,12,13,14]
+device_list: [0,1,11,12,13,14] #[9,10,11,12,13,14]
 max_num_frames: 88200 #2 sec duration during data collection
 
 sample_rate: 44100
@@ -18,7 +18,7 @@ n_mels: 40
 resample_rate: 11025
 
 # ----- preprocessing parameters -----
-subtract_background: False # ***** key parameter *****
+subtract_background: True # ***** key parameter *****
 bandpass_filter: ???
 
 # ----- visualization parameters -----
@@ -35,10 +35,6 @@ batch_size: 16
 val_batch_size: 16
 
 # ----- augmentation param -----
-augment_audio: True #True when doing ablation study
-augment_num_channel: 6
-augment_device_list_used: [0,1,11,12,13,14]
-
 augment_timeshift: True # ***** key parameter ***** (upon init dataset)
 augment_timemask: False
 augment_freqmask: False

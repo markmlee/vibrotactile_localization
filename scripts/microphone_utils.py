@@ -21,6 +21,138 @@ import sys
 import librosa
 import torch
 import torchaudio
+import os
+import torch.nn.functional as F
+
+def animate_ylabel(X_mic_data,Y_label_data):
+    """
+    plot all height,x,y in 3D scatter plot.
+    and then animate each h,x,y individually over the 3D scatter plot.
+    Y_label_data: [N,3] tensor
+    move on to the next animation after keyboard input "enter", exit with "exit"
+    """
+    
+    #get height, x, y
+    height = Y_label_data[:,0]
+    x = Y_label_data[:,1]
+    y = Y_label_data[:,2]
+
+    fig1 = plt.figure()
+    ax1 = fig1.add_subplot(111, projection='3d')
+
+    #plot all height, x, y
+    ax1.scatter(x, y, height, c='r', marker='o', label='height, x, y')
+    ax1.set_xlabel('X Label')
+    ax1.set_ylabel('Y Label')
+    ax1.set_zlabel('Z Label')
+
+    fig2 = plt.figure()
+    ax2 = fig2.add_subplot(111)
+
+    #plot height, x, y individually
+    for i in range(len(height)):
+        
+        #plot waveform of mic data in separate figure
+        ax2.cla()
+        ax2.plot(X_mic_data[i])
+        plt.pause(0.1)
+
+        ax1.cla()
+        ax1.scatter(x, y, height, c='r', marker='o', label='height, x, y')  # plot all points again
+        ax1.scatter(x[i], y[i], height[i], c='b', marker='x', s=100, label='height, x, y')  # plot individual point
+        plt.pause(0.01)
+
+        #wait for user input
+        print(f"trial: {i}, height: {height[i]}, x: {x[i]}, y: {y[i]}")
+        user_input = input("Press Enter to continue or type 'exit' to quit: ").strip()
+        if user_input.lower() == 'exit':
+            break
+
+    plt.show()
+    
+
+def verify_dataset(cfg, data_dir):
+    """
+    load all wav files
+    plot all wav files
+    interactively delete the bad files
+    """
+
+    
+    dir_raw = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
+    #filter out directory that does not start with 'trial'
+    dir_raw = [d for d in dir_raw if d.split('/')[-1].startswith('trial')]
+    len_data = len(dir_raw)
+
+    count = 0
+    #get all directory path to trials
+    data_dir = f"{data_dir}trial"
+    dir = []
+    while len(dir) < len_data:
+        file_name = f"{data_dir}{count}"
+
+        if file_name in dir_raw:
+            dir.append(file_name)
+        count += 1
+    
+    #load data (for multiple mics in device list, get wav files)
+    len_data = len(dir)
+    
+    X_mic_data = []
+    Y_label_data = []
+
+    for trial_n in range(len_data):
+
+        wav_filename = f"{dir[trial_n]}/mic{cfg.device_list[0]}.wav"
+        goal_joint = f"{dir[trial_n]}/goal_j1_angle.npy"
+        #load np
+        goal_joint = np.load(goal_joint)
+        print(f"goal_joint: {goal_joint}")
+
+        print(f"loading wav file: {wav_filename}")
+
+        wav, sample_rate = torchaudio.load(wav_filename)
+        sample_rate = sample_rate
+
+        #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
+        if wav.size(1) < cfg.max_num_frames:
+            wav = F.pad(wav, (0, cfg.max_num_frames - wav.size(1)), mode='circular'   )
+        else:
+            wav = wav[:, :cfg.max_num_frames]
+
+        #append to list of wavs
+        wav = (wav.squeeze(0)) # remove the dimension of size 1
+
+        
+
+        #get label from directory 
+        label_file = f"{dir[trial_n]}/gt_label.npy"
+        label = np.load(label_file) #--> [distance along cylinder, joint 6] i.e. [0.0 m, -2.7 radian]
+
+        #convert label m unit to cm
+        label[0] = label[0] * 100
+
+        #normalize height to [0,1], and radian to [0,1]
+        # label[0] = label[0] / 20.32 #(8" to 20cm)
+        # label[1] = (label[1] + np.pi) / (2*np.pi) #[-pi,pi] to [0,1]
+
+        # #convert radian to x,y coordinate with unit 1
+        x,y  = np.cos(label[1]), np.sin(label[1])
+
+        x_data, y_label = wav, [label[0], x, y]
+
+        X_mic_data.append(x_data)
+        Y_label_data.append(y_label)
+
+    # stack wav files into a tensor of shape (num_mics, num_samples)
+    X_mic_data = torch.stack(X_mic_data, dim=0)
+    print(f"dimension of X input tensor: {X_mic_data.size()}") #--> dimension of wav tensor: torch.Size([N, 88200])
+    Y_label_data = torch.tensor(Y_label_data)
+    print(f"dimension of Y label tensor: {Y_label_data.size()}") #--> dimension of label tensor: torch.Size([N, 3])
+
+    animate_ylabel(X_mic_data,Y_label_data)
+
+    sys.exit()
 
 
 
@@ -59,27 +191,7 @@ def plot_spectrogram_with_cfg(cfg, data, fs):
         
     plt.show()
     
-def plot_spectrogram_of_all_data(cfg, data, fs):
-    """
-    plot spectrogram of 1st mic for all trials
-    [batch_size, mic, freq, time]
-    """
 
-    number_of_trials = len(data)
-
-    fig, axs = plt.subplots(number_of_trials, 1, figsize=(10, 4*number_of_trials))
-
-    for i in range(number_of_trials):
-        S = data[i][0] #just take the first mic
-        S_dB = librosa.power_to_db(S, ref=np.max)
-
-        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, vmin=-80, vmax=0, 
-                                       hop_length=cfg.hop_length, n_fft=cfg.n_fft, ax=axs[i])
-        fig.colorbar(img, ax=axs[i], format='%+2.0f dB')
-        axs[i].set_title(f'Spectrogram of trial {i+1}')
-
-    plt.tight_layout()
-    plt.show()
 
 
 def plot_fft(waves, sample_rate, device_list):
@@ -294,9 +406,32 @@ def grid_plot_spectrogram(data_list, fs):
         
     plt.show()
 
-def plot_spectrogram_of_all_data( data, fs):
+def plot_spectrogram_of_all_data(cfg, data, fs):
     """
-    plot spectrogram of only mic1 for all trials. 
+    plot spectrogram of 1st mic for all trials
+    [batch_size, mic, freq, time]
+    """
+
+    number_of_trials = len(data)
+
+    fig, axs = plt.subplots(number_of_trials, 1, figsize=(10, 4*number_of_trials))
+
+    for i in range(number_of_trials):
+        S = data[i][0] #just take the first mic
+        S_dB = librosa.power_to_db(S, ref=np.max)
+
+        img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, vmin=-80, vmax=0, 
+                                       hop_length=cfg.hop_length, n_fft=cfg.n_fft, ax=axs[i])
+        fig.colorbar(img, ax=axs[i], format='%+2.0f dB')
+        axs[i].set_title(f'Spectrogram of trial {i+1}')
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_spectrogram_of_all_data_independent( data, fs):
+    """
+    plot spectrogram of only mic1 for all trials.
+    This is independent of the training loop and for visualization purposes only 
     plot in 10x1 grid tight layout"
     """
 

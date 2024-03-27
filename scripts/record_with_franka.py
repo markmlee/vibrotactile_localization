@@ -27,7 +27,7 @@ total_repeat_count = 1 #number of times to repeat the 2D motion
 total_trial_count = 0
 end_trial_count = distance_sample_count * radian_sample_count * total_repeat_count
 
-goal_j1_angle_min, goal_j1_angle_max = 5.0, 7.0 #degrees for tap stick joint
+goal_j1_angle_min, goal_j1_angle_max = 5.5, 7.0 #degrees for tap stick joint
 j7_radian_min, j7_radian_max = -2.7, 2.7 #radians for tap stick joint
 
 cylinder_length = 0.203 #meters along the cylinder to traverse

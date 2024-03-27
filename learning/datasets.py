@@ -68,7 +68,7 @@ class AudioDataset(Dataset):
 
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
-
+            print(f"loading trial: {trial_n}")
             x_data, y_label = self.load_xy_single_trial(self.cfg, trial_n)
 
             self.X_mic_data.append(x_data)
@@ -294,13 +294,13 @@ def load_data(cfg, train_or_val = 'val'):
             
             #get first element of dataset
             x, y = dataset[i]
-
             #convert to numpy
             x = x.numpy()
-
             #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
             x = [x[i] for i in range(x.shape[0])]
             # print(f"size of x: {len(x)}")
+
+            print(f"i: {i} and y: {y}")
 
             # plot mel spectrogram
             mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
@@ -314,7 +314,7 @@ def load_data(cfg, train_or_val = 'val'):
 
 
     #load train and val loader
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=cfg.val_batch_size, shuffle=False)
 
     return train_loader, val_loader

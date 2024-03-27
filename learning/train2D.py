@@ -6,7 +6,6 @@ from datasets import AudioDataset
 import torch
 import logging
 import os
-import math
 from tqdm import tqdm
 import sys
 from easydict import EasyDict
@@ -16,6 +15,7 @@ import torch.nn as nn
 import torch.optim as optim
 import wandb
 import numpy as np
+import matplotlib.pyplot as plt
 
 #logger
 import logging
@@ -27,92 +27,26 @@ from datasets import AudioDataset
 from datasets import load_data
 
 #models
-from models.CNN import CNNRegressor, CNNRegressor2D
+from models.KNN import KNN
+from models.CNN import CNNRegressor
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
-from datasets import plot_spectrogram
+import eval_utils as eval_utils
 
-import matplotlib.pyplot as plt
+#import function from another directory for plotting
+sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
+import microphone_utils as mic_utils
 
-def plot_regression(cfg, y_pred_list, y_val_list):
-    #plot regression line for height, x, y 
 
-    #given list of [[height, x,y]..] extract height from 1st element of list, x from 2nd element, y from 3rd element
-    height = [item[0] for item in y_val_list]
-    radian = [item[1] for item in y_val_list]
+
+
+
+torch.manual_seed(42)
+np.random.seed(42)
+
+
     
-    height_pred = [item[0] for item in y_pred_list]
-    radian_pred = [item[1] for item in y_pred_list]
-
-    # Initialize layout
-    fig, ax = plt.subplots(figsize = (9, 9))
-    #add scatter plot for 1st element (height)
-    ax.scatter(height, height_pred, alpha=0.7, edgecolors='k')
-    #add regression line
-    b,a, = np.polyfit(height, height_pred, deg=1)
-    xseq = np.arange(0,len(height),1)
-    ax.plot(xseq, a + b * xseq, color = 'r', lw=2.5)
-
-    plt.title('Regression plot 1D line')
-    plt.xlabel('height_val')
-    plt.ylabel('height_pred')
-
-    #set x and y axis limits
-    plt.xlim(0, 25)
-    plt.ylim(0, 25)
-
-    #save the regression plot in output directory
-    if cfg.visuaize_regression:
-        plt.savefig(os.path.join(cfg.checkpoint_dir, 'height_plot.png'))
-        plt.show()
-
-    fig, ax = plt.subplots(figsize = (9, 9))
-    #add scatter plot for 1st element (height)
-    ax.scatter(radian, radian_pred, alpha=0.7, edgecolors='k')
-    #add regression line
-    b,a, = np.polyfit(radian, radian_pred, deg=1)
-    xseq = np.arange(0,len(height),1)
-    ax.plot(xseq, a + b * xseq, color = 'r', lw=2.5)
-
-    plt.title('Regression plot radians')
-    plt.xlabel('rad_val')
-    plt.ylabel('rad_pred')
-
-    #set x and y axis limits
-    plt.xlim(-2*np.pi, 2*np.pi)
-    plt.ylim(-2*np.pi, 2*np.pi)
-
-    #save the regression plot in output directory
-    if cfg.visuaize_regression:
-        plt.savefig(os.path.join(cfg.checkpoint_dir, 'radian_plot.png'))
-        plt.show()
-
-    #convert radian to x,y coordinates
-    x_pred = np.cos(radian_pred)
-    y_pred = np.sin(radian_pred)
-
-    x = np.cos(radian)
-    y = np.sin(radian)
-
-    #add a new scatter plot for x,y 
-    fig, ax = plt.subplots(figsize = (9, 9))
-
-    ax.scatter(x_pred,y_pred, alpha=0.7, c='g' ,edgecolors='k')
-    ax.scatter(x,y, alpha=0.7,c='r' ,edgecolors='k')
-
-    plt.title('Regression plot for radians (x,y coordinates)')
-    plt.xlabel('x')
-    plt.ylabel('y')
-
-    #add legend
-    plt.legend(['y_pred', 'y_val'])
-
-    #save the regression plot in output directory
-    if cfg.visuaize_regression:
-        plt.savefig(os.path.join(cfg.checkpoint_dir, 'xy_plot_radians.png'))
-        plt.show()
-
 
 def train_KNN(cfg):
     """
@@ -175,49 +109,12 @@ def eval_KNN(cfg, model):
     mse,y_pred_list, y_val_list = model.mae(x_val, y_val)
 
     #plot regression line
-    plot_regression(y_pred_list, y_val_list)
+    eval_utils.plot_regression(y_pred_list, y_val_list)
 
 
     print(f" --------- evaluation complete ---------")
 
     return mse
-
-
-def compute_one_training_batch(model, x, y, device, criterion_height, criterion_radian):
-    """
-    To be performed inside the training loop
-    in: model, x, y, criterion, optimizer
-    out: loss
-    """
-    #weight for each loss
-    weight_height = 1 #[0 to 20cm]
-    weight_radian = 10 #[-2pi to 2pi]
-
-    x_train, y_train = x.float().to(device), y.float().to(device)
-
-    # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
-    height, radianx, radiany = model(x_train) # --> CNN separate-head output
-
-    # print(f"height: {height}, radian: {radian}") # --> torch.Size([80, 1]), torch.Size([80, 1])
-    # print(f"height: {height}, x: {radianx}, y:{radiany}") 
-    # print(f"y_train[:,0] : {y_train[:,0]}, y_train[:,1]: {y_train[:,1]}, y_train[:,2]: {y_train[:,2]}") # --> torch.Size([80]), torch.Size([80])
-
-    #reshape height and radian to be same shape as y_train
-    height = height.view(-1)
-    # radian = radian.view(-1)
-    radianx = radianx.view(-1)
-    radiany = radiany.view(-1)
-    
-    #separate loss for each output. L1 loss for height, MSE for radians
-    train_loss_height = criterion_height(height, y_train[:,0])
-    # train_loss_radian = criterion_radian(radian, y_train[:,1])
-    train_loss_radian = criterion_radian(radianx, y_train[:,1]) + criterion_radian(radiany, y_train[:,2])
-
-    train_loss = weight_height * train_loss_height + weight_radian * train_loss_radian
-
-    return train_loss
-
-
 
 def train_CNN(cfg,device, wandb, logger):
     """
@@ -231,16 +128,16 @@ def train_CNN(cfg,device, wandb, logger):
 
     
     #model
-    model = CNNRegressor2D(cfg)
+    model = CNNRegressor(cfg)
 
-    #define separate loss for each output. L1 loss for height, MSE for radians
-    criterion_height = torch.nn.MSELoss()
-    criterion_radian = torch.nn.L1Loss() 
+    #define loss and optimizer
+    criterion = torch.nn.L1Loss() #--> L1 loss using mean absolute error
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)  # Adjust step_size and gamma as needed
 
+    
     model.to(device)
     logger.log(f"model: {model}")
     
@@ -260,8 +157,20 @@ def train_CNN(cfg,device, wandb, logger):
         model.train()
 
         for _, (x, y) in enumerate(train_loader):
+
+            if cfg.visuaize_dataset:
+                mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
+                sys.exit()
+
+            x_train, y_train = x.float().to(device), y.float().to(device)
+
+            # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
+
             optimizer.zero_grad()
-            train_loss = compute_one_training_batch(model, x, y, device, criterion_height, criterion_radian)
+            y_pred = model(x_train) # --> CNN single-head output
+            # print(f"y values: {y_train}, y_pred: {y_pred}")
+            train_loss = criterion(y_pred, y_train)
+
             train_loss.backward()
             optimizer.step()
 
@@ -285,23 +194,22 @@ def train_CNN(cfg,device, wandb, logger):
             model.eval()
 
             for _, (x, y) in enumerate(tqdm(val_loader)):
-
+                x_val, y_val = x, y
+                
+                x_val, y_val = x_val.float().to(device), y_val.float().to(device)
                 with torch.no_grad():
-                    val_loss = compute_one_training_batch(model, x, y, device, criterion_height, criterion_radian)
-                    epoch_val_loss += val_loss.item()
+                    y_pred = model(x_val)
+                    val_loss = criterion(y_pred, y_val)
 
+                    epoch_val_loss += val_loss.item()
                 
             epoch_val_loss = epoch_val_loss / len(val_loader)
 
             logger.log(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
 
-            #print learning rate [0.01] --> 0.01
-            logger.log(f"Learning rate: {scheduler.get_last_lr()[0]}")
-
             if cfg.log_wandb:
                 wandb.log({'epoch': i, 'train_loss': epoch_train_loss})
                 wandb.log({'epoch': i, 'val_loss': epoch_val_loss})
-                wandb.log({'epoch': i, 'learning_rate': scheduler.get_last_lr()[0]})
             train_loss_history.append(epoch_train_loss)
             val_loss_history.append(epoch_val_loss)
 
@@ -319,12 +227,13 @@ def train_CNN(cfg,device, wandb, logger):
                 #print location of saved model
                 logger.log("Saved model : {}/model.pth".format(cfg.checkpoint_dir))
 
-        #at last epoch, run evaluate_CNN to plot regression line
+        #at last epoch, run eval_CNN to plot regression line
         if i == cfg.train_epochs-1:
             error = evaluate_CNN(cfg,best_model,device,val_loader, logger)
             logger.log(f"Mean Absolute Error: {error}")
 
     
+
 
     print(f" --------- training complete ---------")
     return best_model, train_loss_history, val_loss_history
@@ -375,7 +284,7 @@ def eval_random_prediction(cfg, device):
     print(f"size of y_pred_list, y_val_list: {len(y_pred_list)}, {len(y_val_list)}")
 
     #plot regression line
-    plot_regression(y_pred_list, y_val_list)
+    eval_utils.plot_regression(y_pred_list, y_val_list)
 
 
     return error
@@ -387,63 +296,28 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
     """
     model.eval()
 
-    height_error, radian_error = 0,0
+    error = 0
     y_val_list = []
     y_pred_list = []
 
-    print(f" val_loader length: {len(val_loader)}")
-
     for _, (x, y) in enumerate(tqdm(val_loader)):
 
-        x_val, y_val = x.float().to(device), y.float().to(device)
+        x_val, y_val = x.to(device), y.to(device)
 
     
         with torch.no_grad():
-            # height, radian = model(x_val) # --> CNN separate-head output
-            height, radianx, radiany = model(x_val) # --> CNN separate-head output
+            y_pred = model(x_val)
 
-            #reshape height and radian to be same shape as y_val
-            height = height.view(-1)
-            # radian = radian.view(-1)
-            radianx = radianx.view(-1)
-            radiany = radiany.view(-1)
+            #use only first column element of y_pred and y_val
+            y_pred = y_pred[:,0]
+            y_val = y_val[:,0]
 
-            #unnormalize [0,1] to [0,20] and [-pi, pi]
-            # height = height * 20.32
-            # radian = radian * 2*np.pi - np.pi
-
-            height_diff = height - y_val[:,0] #* (20.32)
-            radianx_diff = radianx - y_val[:,1] #* (2*np.pi - np.pi)
-            radiany_diff = radiany - y_val[:,2] #* (2*np.pi - np.pi)
-
-
-            print(f"height_diff: {height_diff}")
-            print(f"radianX_diff: {radianx_diff}")
-            print(f"radianY_diff: {radiany_diff}")
-
-            #print the dimensions of rad_y and rad_x
-            print(f" height: {height} radianx: {radianx}, radiany: {radiany}")
-            print(f" dim radianx: {radianx.shape}, dim radiany: {radiany.shape}")
-            # sys.exit()
-
-
-            #convert radianx and radiany to radian
-            radian_predict = torch.atan2(radiany, radianx)
-            radian_val = torch.atan2(y_val[:,2], y_val[:,1])
-
-            radian_diff = radian_predict - radian_val
+            # print(f"y_pred: {y_pred}, y_val: {y_val}")
+            y_diff = y_pred - y_val
+            print(f"y_diff: {y_diff}")
 
             #get absolute error
-            height_error += torch.mean(torch.abs(height_diff)) 
-            radian_error += torch.mean(torch.abs(radian_diff))
-
-            #print dimension of height and radian
-            # print(f"height: {height}, radian: {radian_predict}")
-            # print(f"y_val[:,0] : {y_val[:,0]}, y_val[:,1]: {radian_val}")
-
-            #combine height and radian to y_pred
-            y_pred = torch.stack((height, radian_predict), dim=1)
-            y_val = torch.stack((y_val[:,0], radian_val), dim=1)
+            error += torch.mean(torch.abs(y_diff))
         
         #get tensor values and append them to list
         y_val_list.extend(y_val.cpu().numpy())
@@ -451,16 +325,13 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
         
             
     #sum up the rmse and divide by number of batches
-    height_error = (height_error) / len(val_loader)
-    radian_error = (radian_error) / len(val_loader)
+    error = error / len(val_loader)
 
-    error = height_error + radian_error
-
-    logger.log(f"Height Error: {height_error}, Radian Error: {radian_error}")
+    logger.log(f"Mean Absolute Error: {error}")
 
     if cfg.visuaize_regression:
         #plot regression line
-        plot_regression(cfg, y_pred_list, y_val_list)
+        eval_utils.plot_regression(cfg, y_pred_list, y_val_list)
 
         
         
@@ -468,6 +339,61 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
     return error
 
+
+def eval_CNN(cfg, model,device, logger):
+    """
+    error = eval_CNN(cfg, model)
+    plot y_pred vs y_val in a regression plot
+    """
+    logger.log(" --------- evaluating ---------")
+    #load data
+    train_loader, val_loader = load_data(cfg, train_or_val='val')
+
+    model.eval()
+
+    error = 0
+    y_val_list = []
+    y_pred_list = []
+
+    for _, (x, y) in enumerate(tqdm(val_loader)):
+
+        x_val, y_val = x.to(device), y.to(device)
+
+        #convert tensor to numpy array and plot spectrogram
+        x_val = x_val.cpu().numpy()
+
+
+
+        with torch.no_grad():
+            y_pred = model(x_val)
+
+            #use only first column element of y_pred and y_val
+            y_pred = y_pred[:,0]
+            y_val = y_val[:,0]
+
+            # print(f"y_pred: {y_pred}, y_val: {y_val}")
+            y_diff = y_pred - y_val
+            print(f"y_diff: {y_diff}")
+
+            #get absolute error
+            error += torch.mean(torch.abs(y_diff))
+        
+        #get tensor values and append them to list
+        y_val_list.extend(y_val.cpu().numpy())
+        y_pred_list.extend(y_pred.cpu().numpy())
+        
+            
+    #sum up the rmse and divide by number of batches
+    error = error / len(val_loader)
+
+    logger.log(f"Mean Absolute Error: {error}")
+
+    if cfg.visuaize_regression:
+        #plot regression line
+        eval_utils.plot_regression(y_pred_list, y_val_list)
+
+
+    return error
 
         
 
@@ -483,7 +409,11 @@ def init_wandb(cfg):
         # set the wandb project where this run will be logged
         project=cfg.wandb_project,
         # track hyperparameters and run metadata
-
+        config={
+        "learning_rate": 0.001,
+        "architecture": "Convblock3x",
+        "batch_size": cfg.batch_size,
+        }
     )
 # ==================================================================================================
 
@@ -491,6 +421,9 @@ def init_wandb(cfg):
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'train2D')
 def main(cfg: DictConfig):
+
+    if cfg.inspect_data_label:
+        mic_utils.verify_dataset(cfg, cfg.data_dir)
 
     logger = Logger(log_wandb=cfg.log_wandb, simple_log = log, cfg=cfg)
     print(f"Working directory : {os.getcwd()}")
@@ -518,6 +451,9 @@ def main(cfg: DictConfig):
     model, train_loss_history, val_loss_history = train_CNN(cfg,device, wandb, logger)
 
     
+    # error = eval_random_prediction(cfg, device)
+    # error = eval_CNN(cfg, model,device,logger)
+    # logger.log(f"Mean Absolute Error: {error}")
 
     # ------------------------------------------
 
