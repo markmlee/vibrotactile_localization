@@ -4,7 +4,7 @@ wandb_run_name: "baseline_6mic_preprocess"
 wandb_project: "audio_localization3"
 
 
-data_dir: /home/mark/audio_learning_project/data/franka_2D_localization/
+data_dir: /home/mark/audio_learning_project/data/franka_2D_localization/ #franka_2D_localization/
 background_dir: /home/mark/audio_learning_project/data/franka_constant/trial0/
 transform: mel
 
@@ -19,29 +19,33 @@ resample_rate: 11025
 
 # ----- preprocessing parameters -----
 subtract_background: False # ***** key parameter *****
-bandpass_filter: ???
 
 # ----- visualization parameters -----
-inspect_data_label: False
-visuaize_dataset: False
-visuaize_regression: True
+inspect_data_label: False # to iteratively visualize the audio & GT label in 3D plot 
+visuaize_dataset: False # to visualize the dataloader 
+visuaize_regression: True # for evaluation, to visualize the regression output 
 
 # ----- training parameters -----
 
 model_path: /home/mark/audio_learning_project/models
 normalize_audio_data: False # ***** key parameter *****
-checkpoint_dir: ???
+checkpoint_dir: ??? #to be filled in by hydra
 
 batch_size: 16
 val_batch_size: 16
 
+# ----- output representation parameters -----
+output_representation: 'xy' #'radian' 
+output_representation_normalize: False #for ablation study, to normalize the output representation
+
+
 # ----- augmentation param -----
 augment_timeshift: True # ***** key parameter ***** (upon init dataset)
-augment_timemask: False
-augment_freqmask: False
+augment_timemask: False #upon getitem in dataloader
+augment_freqmask: False #upon getitem in dataloader
 
 # ----- training hypertuning parameters -----
-train_epochs: 400
+train_epochs: 400 #400
 log_frequency: 10
 eval_frequency: 10
 

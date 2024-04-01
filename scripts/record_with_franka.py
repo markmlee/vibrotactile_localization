@@ -180,8 +180,6 @@ def main():
             #get current ee quaternion
             current_ee_RigidTransform_rotm = franka_robot.get_ee_pose().rotation
 
-            
-
             #--------------------------- record trajectory and audio at each point along the cylinder ---------------------------
             x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau = tap_along_1D_cylinder(franka_robot, z_along_cylinder, init_z, current_ee_RigidTransform_rotm, gt_label_rad)
 
@@ -194,11 +192,6 @@ def main():
 
             
 
-
-    
-
-
-    
     np.save(f"{save_path_data}recorded_x_trajectory.npy", x_t_list_2D, allow_pickle=True)
     np.save(f"{save_path_data}recorded_xdot_trajectory.npy", xdot_t_list_2D, allow_pickle=True)
     np.save(f"{save_path_data}recorded_x_des_trajectory.npy", x_t_des_list_2D, allow_pickle=True)

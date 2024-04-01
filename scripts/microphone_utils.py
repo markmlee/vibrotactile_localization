@@ -23,6 +23,7 @@ import torch
 import torchaudio
 import os
 import torch.nn.functional as F
+import noisereduce as nr
 
 def animate_ylabel(X_mic_data,Y_label_data):
     """
@@ -538,6 +539,44 @@ def load_wav_files_as_dataset(devicelist, trial_count, load_path):
 
     return mic_data_over_trials
 
+def load_background_noise(cfg):
+        """
+        Load the data from a single trial to subtract from the dataset
+        return a list of background noise for all mics, dim [num_mics]
+        """
+        
+        num_mics = len(cfg.device_list)
+
+        background_wavs = []
+        path_name = cfg.background_dir
+
+        for i in range(num_mics):
+            wav_filename = f"{path_name}/mic{cfg.device_list[i]}.wav"
+            wav, sample_rate = torchaudio.load(wav_filename)
+
+            #extend wav length by wrapping around twice
+            wav = torch.cat([wav, wav], dim=1)
+
+            background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
+        
+        return background_wavs
+
+        
+def subtract_background_noise(y_single_waveform, noise_single_waveform, sample_rate):
+    """
+    in: array of single waveform of y and noise
+    out: y without noise
+    """
+
+    #trim length of background noise to match the length of wav file
+    background = noise_single_waveform[:y_single_waveform.size()[0]]
+
+    # print(f"dimensions of all 3 wavs: {input_wav.size()}, {background.size()}, {wavs[i].size()}")
+    # Apply noise reduction
+    y_single_waveform = nr.reduce_noise(y=y_single_waveform, sr=sample_rate, y_noise=background, stationary=True, n_std_thresh_stationary = 4.5)
+    #convert to tensor
+    y_single_waveform = torch.tensor(y_single_waveform, dtype=torch.float32)
+    return y_single_waveform
 
 
 def load_specific_wav_files(devicelist, mics_to_plot, save_path_data, total_trial_count):
@@ -719,6 +758,7 @@ def trim_to_same_length(data_list):
         data_list[i] = data_list[i][:min_length]
 
     return data_list
+
 
 def preprocess_data(mic_signals_from_all_trials, GT_labels):
     """

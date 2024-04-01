@@ -28,7 +28,7 @@ from datasets import load_data
 
 #models
 from models.KNN import KNN
-from models.CNN import CNNRegressor
+from models.CNN import CNNRegressor, CNNRegressor2D
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
@@ -128,7 +128,7 @@ def train_CNN(cfg,device, wandb, logger):
 
     
     #model
-    model = CNNRegressor(cfg)
+    model = CNNRegressor2D(cfg)
 
     #define loss and optimizer
     criterion = torch.nn.L1Loss() #--> L1 loss using mean absolute error
@@ -309,12 +309,12 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
             y_pred = model(x_val)
 
             #use only first column element of y_pred and y_val
-            y_pred = y_pred[:,0]
-            y_val = y_val[:,0]
+            # y_pred = y_pred[:,0]
+            # y_val = y_val[:,0]
 
             # print(f"y_pred: {y_pred}, y_val: {y_val}")
             y_diff = y_pred - y_val
-            print(f"y_diff: {y_diff}")
+            # print(f"y_diff: {y_diff}")
 
             #get absolute error
             error += torch.mean(torch.abs(y_diff))
@@ -328,6 +328,10 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
     error = error / len(val_loader)
 
     logger.log(f"Mean Absolute Error: {error}")
+
+    #stack the list of array to numpy array
+    y_val_list = np.stack(y_val_list)
+    y_pred_list = np.stack(y_pred_list)
 
     if cfg.visuaize_regression:
         #plot regression line
@@ -335,62 +339,6 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
         
         
-
-
-    return error
-
-
-def eval_CNN(cfg, model,device, logger):
-    """
-    error = eval_CNN(cfg, model)
-    plot y_pred vs y_val in a regression plot
-    """
-    logger.log(" --------- evaluating ---------")
-    #load data
-    train_loader, val_loader = load_data(cfg, train_or_val='val')
-
-    model.eval()
-
-    error = 0
-    y_val_list = []
-    y_pred_list = []
-
-    for _, (x, y) in enumerate(tqdm(val_loader)):
-
-        x_val, y_val = x.to(device), y.to(device)
-
-        #convert tensor to numpy array and plot spectrogram
-        x_val = x_val.cpu().numpy()
-
-
-
-        with torch.no_grad():
-            y_pred = model(x_val)
-
-            #use only first column element of y_pred and y_val
-            y_pred = y_pred[:,0]
-            y_val = y_val[:,0]
-
-            # print(f"y_pred: {y_pred}, y_val: {y_val}")
-            y_diff = y_pred - y_val
-            print(f"y_diff: {y_diff}")
-
-            #get absolute error
-            error += torch.mean(torch.abs(y_diff))
-        
-        #get tensor values and append them to list
-        y_val_list.extend(y_val.cpu().numpy())
-        y_pred_list.extend(y_pred.cpu().numpy())
-        
-            
-    #sum up the rmse and divide by number of batches
-    error = error / len(val_loader)
-
-    logger.log(f"Mean Absolute Error: {error}")
-
-    if cfg.visuaize_regression:
-        #plot regression line
-        eval_utils.plot_regression(y_pred_list, y_val_list)
 
 
     return error
@@ -452,7 +400,6 @@ def main(cfg: DictConfig):
 
     
     # error = eval_random_prediction(cfg, device)
-    # error = eval_CNN(cfg, model,device,logger)
     # logger.log(f"Mean Absolute Error: {error}")
 
     # ------------------------------------------

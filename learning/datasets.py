@@ -17,7 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import librosa.display
 import librosa
-import noisereduce as nr
+
 
 #import function from another directory for plotting
 sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
@@ -64,7 +64,9 @@ class AudioDataset(Dataset):
         self.Y_label_data = []
 
         #load background noise
-        self.load_background_noise()
+        print(f" --------- loading background noise ---------")
+        self.background_wavs = mic_utils.load_background_noise(cfg)
+        # mic_utils.plot_fft(self.background_wavs, self.sample_rate)
 
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
@@ -98,27 +100,7 @@ class AudioDataset(Dataset):
 
             print(f" --------- DS normalized ---------")
 
-    def load_background_noise(self):
-        """Load the data from a single trial to subtract from the data"""
-        print(f" --------- loading background noise ---------")
-        num_mics = len(self.cfg.device_list)
-
-        background_wavs = []
-        path_name = self.cfg.background_dir
-
-        for i in range(num_mics):
-            wav_filename = f"{path_name}/mic{self.cfg.device_list[i]}.wav"
-            wav, sample_rate = torchaudio.load(wav_filename)
-
-            #extend wav length by wrapping around twice
-            wav = torch.cat([wav, wav], dim=1)
-
-            background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
-        
-        self.background_wavs = background_wavs
-
-        # self.plot_fft(self.background_wavs, sample_rate)
-
+    
 
     def load_xy_single_trial(self, cfg, trial_n):
         """
@@ -148,14 +130,7 @@ class AudioDataset(Dataset):
             wavs.append(wav.squeeze(0)) # remove the dimension of size 1
 
             if self.cfg.subtract_background:
-                #trim length of background noise to match the length of wav file
-                background = self.background_wavs[i][:wav.size(1)]
-
-                # print(f"dimensions of all 3 wavs: {input_wav.size()}, {background.size()}, {wavs[i].size()}")
-                # Apply noise reduction
-                wavs[i] = nr.reduce_noise(y=wavs[i], sr=self.sample_rate, y_noise=background, stationary=True, n_std_thresh_stationary = 4.5)
-                #convert to tensor
-                wavs[i] = torch.tensor(wavs[i], dtype=torch.float32)
+                wavs[i] = mic_utils.subtract_background_noise(wavs[i], self.background_wavs[i], self.sample_rate)
                 # print(f"dim of wav after noise reduction: {wavs[i].size()}")
 
             
@@ -189,13 +164,22 @@ class AudioDataset(Dataset):
         label[0] = label[0] * 100
 
         #normalize height to [0,1], and radian to [0,1]
-        # label[0] = label[0] / 20.32 #(8" to 20cm)
-        # label[1] = (label[1] + np.pi) / (2*np.pi) #[-pi,pi] to [0,1]
+        if cfg.output_representation_normalize:
+            label[0] = label[0] / 20.32 #(8" to 20cm)
 
-        # #convert radian to x,y coordinate with unit 1
-        x,y  = np.cos(label[1]), np.sin(label[1])
-        # label = [label[0], x, y] # converted radian for continuous 0 to 2pi representation in xy coordinate
-        # label = [label[0], label[1]] #TODO: REMOVE converted radian for continuous 0 to 2pi representation in xy coordinate
+        if cfg.output_representation == 'radian':
+            label[1] = label[1]
+
+            if cfg.output_representation_normalize:
+                label[1] = (label[1] + np.pi) / (2*np.pi) #[-pi,pi] to [0,1]
+
+        elif cfg.output_representation == 'xy':
+            #convert radian to x,y coordinate with unit 1
+            x,y  = np.cos(label[1]), np.sin(label[1])
+            # label = [label[0], x, y] #dont make into list, but stack as numpy label[2]
+            label[1] = x
+            label = np.append(label, y) #--> [height, x, y]
+
 
 
         # #convert to tensor
@@ -234,11 +218,6 @@ class AudioDataset(Dataset):
 
 
 
-
-
-
-    
-    
 def load_data(cfg, train_or_val = 'val'):
     """
     Load the dataset and split it into train and validation
@@ -247,49 +226,8 @@ def load_data(cfg, train_or_val = 'val'):
     dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform)
 
   
-
     #visuaize dataset
     if cfg.visuaize_dataset:
-        # print(f"size of dataset: {len(dataset)}")
-        # x_list = []
-        # y_list = []
-        # height_list = []
-
-        # for i in range(len(dataset)):
-        #     #plot all labels
-        #     x, y = dataset[i]
-
-            
-        #     x_list.append(y[1].item())
-        #     y_list.append(y[2].item())
-        #     height_list.append(y[0].item())
-
-        # #plot 3D scatter plot of rad_x,rad_y,height
-        # #point should be color coded based on index number
-        # # Create a new figure
-        # fig = plt.figure()
-
-        # # Add a 3D subplot
-        # ax = fig.add_subplot(111, projection='3d')
-
-        # # Create a color map based on index number
-        # colors = plt.cm.viridis(np.linspace(0, 1, len(dataset)))
-
-        # # Plot 3D scatter plot of rad_x, rad_y, height
-        # scatter = ax.scatter(x_list, y_list, height_list, c=colors)
-
-        # # Add a color bar
-        # plt.colorbar(scatter)
-
-        # # Set labels
-        # ax.set_xlabel('X')
-        # ax.set_ylabel('Y')
-        # ax.set_zlabel('Height')
-
-        # # Show the plot
-        # plt.show()
-
-
         for i in range(5):
             
             #get first element of dataset
@@ -299,9 +237,7 @@ def load_data(cfg, train_or_val = 'val'):
             #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
             x = [x[i] for i in range(x.shape[0])]
             # print(f"size of x: {len(x)}")
-
             print(f"i: {i} and y: {y}")
-
             # plot mel spectrogram
             mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
 
