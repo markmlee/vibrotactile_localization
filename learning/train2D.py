@@ -28,10 +28,12 @@ from datasets import load_data
 
 #models
 from models.KNN import KNN
-from models.CNN import CNNRegressor, CNNRegressor2D
+from models.CNN import CNNRegressor, CNNRegressor2D, CNNRegressor1D, CNNRegressor_Classifier
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
+
+from sklearn.metrics import accuracy_score
 import eval_utils as eval_utils
 
 #import function from another directory for plotting
@@ -116,6 +118,68 @@ def eval_KNN(cfg, model):
 
     return mse
 
+def model_prediction(cfg, device, model, x, y, criterion_list, weight_list):
+    """
+    Called every batch to predict y values and return the loss 
+    """
+    x_, y_ = x.float().to(device), y.float().to(device)
+
+    # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
+    
+    y_pred = model(x_) # --> CNN single-head output
+
+    if cfg.output_representation == 'height':
+        y_pred_height = y_pred
+        y_train_height = y_
+        
+        
+        criterion_height = criterion_list[0]
+
+        total_loss = criterion_height(y_pred_height, y_train_height)
+        # print(f"dim of x: {x.size()}, y: {y.size()}")
+        # print(f"y: {y}, y_pred: {y_pred}, total_loss: {total_loss}")
+
+    elif cfg.output_representation == 'xy':
+        # Split y_pred and y_train into height, x, and y components
+        y_pred_height, y_pred_x, y_pred_y = y_pred[:, 0], y_pred[:, 1], y_pred[:, 2]
+        y_train_height, y_train_x, y_train_y = y_[:, 0], y_[:, 1], y_[:, 2]
+
+        #unpack criterion_list and weight_list
+        criterion_height, criterion_x, criterion_y = criterion_list
+        weight_height, weight_x, weight_y = weight_list
+
+        # Compute individual losses
+        loss_height = criterion_height(y_pred_height, y_train_height)
+        loss_x = criterion_x(y_pred_x, y_train_x)
+        loss_y = criterion_y(y_pred_y, y_train_y)
+        
+        # print(f"y: {y}, y_pred: {y_pred}, loss_height: {loss_height}, loss_x: {loss_x}, loss_y: {loss_y}")
+        total_loss = weight_height * loss_height + weight_x * loss_x + weight_y * loss_y
+
+    elif cfg.output_representation == 'height_radianclass':
+
+        # print(f"y_pred: {y_pred}, y_: {y_}")
+        # Split y_pred and y_train into height, x, and y components
+        y_pred_height, y_pred_class = y_pred
+        y_train_height, y_train_class = y_[:, 0], y_[:, 1]
+
+        #convert y_train_class to be int
+        y_train_class = y_train_class.long()
+
+        #unpack criterion_list and weight_list
+        criterion_height, criterion_classifier = criterion_list
+        weight_height, weight_classifier = weight_list
+
+        # Compute individual losses
+        loss_height = criterion_height(y_pred_height, y_train_height)
+        loss_classifier = criterion_classifier(y_pred_class, y_train_class)
+        
+        print(f"y: {y}, y_pred: {y_pred}")
+        print(f"y_pred_class: {y_pred_class}, y_train_class: {y_train_class}")
+        total_loss = weight_height * loss_height + weight_classifier * loss_classifier
+    return total_loss
+
+
 def train_CNN(cfg,device, wandb, logger):
     """
     model = train_CNN(cfg)
@@ -126,21 +190,49 @@ def train_CNN(cfg,device, wandb, logger):
     #load data
     train_loader, val_loader = load_data(cfg, train_or_val='train')
 
-    
     #model
     model = CNNRegressor2D(cfg)
 
+    if cfg.output_representation == 'height_radianclass':
+        model = CNNRegressor_Classifier(cfg)
+        criterion_classifier = torch.nn.CrossEntropyLoss()
+
     #define loss and optimizer
-    criterion = torch.nn.L1Loss() #--> L1 loss using mean absolute error
+    criterion_height = torch.nn.MSELoss() #--> L1 loss using mean absolute error
+    criterion_rad = torch.nn.MSELoss()
+    criterion_x = torch.nn.MSELoss()
+    criterion_y = torch.nn.MSELoss()
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-    # Learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)  # Adjust step_size and gamma as needed
+    # Weights for each loss component (can be adjusted)
+    weight_height = 1
+    weight_rad = 5
+    weight_x = 5
+    weight_y = 5
+    weight_classifier = 5
 
+    if cfg.output_representation == 'xy':
+        criterion_list = [criterion_height, criterion_x, criterion_y]
+        weight_list = [weight_height, weight_x, weight_y]
     
+    elif cfg.output_representation == 'rad':
+        criterion_list = [criterion_height, criterion_rad]
+        weight_list = [weight_height, weight_rad]
+
+    elif cfg.output_representation == 'height':
+        criterion_list = [criterion_height]
+        weight_list = [weight_height]
+
+    elif cfg.output_representation == 'height_radianclass':
+        criterion_list = [criterion_height, criterion_classifier]
+        weight_list = [weight_height, weight_classifier]
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    # Learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)  # Adjust step_size and gamma as needed
+
     model.to(device)
     logger.log(f"model: {model}")
-    
+
     total_params = sum(p.numel() for p in model.parameters())
     logger.log(f"Number of parameters: {total_params}")
 
@@ -148,7 +240,7 @@ def train_CNN(cfg,device, wandb, logger):
     val_loss_history = []
 
     best_val_loss = torch.inf
-
+    # ---------------------------- epoch  ----------------------------
     for i in tqdm(range(cfg.train_epochs)):
 
         epoch_train_loss = 0
@@ -156,60 +248,46 @@ def train_CNN(cfg,device, wandb, logger):
 
         model.train()
 
+        #---------------------------- train ----------------------------
         for _, (x, y) in enumerate(train_loader):
 
             if cfg.visuaize_dataset:
                 mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
                 sys.exit()
 
-            x_train, y_train = x.float().to(device), y.float().to(device)
-
-            # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
-
+            
             optimizer.zero_grad()
-            y_pred = model(x_train) # --> CNN single-head output
-            # print(f"y values: {y_train}, y_pred: {y_pred}")
-            train_loss = criterion(y_pred, y_train)
 
+            train_loss = model_prediction(cfg, device, model, x, y, criterion_list, weight_list)
             train_loss.backward()
             optimizer.step()
-
             epoch_train_loss += train_loss.item()
             
         epoch_train_loss = epoch_train_loss / len(train_loader)
 
         # Adjust learning rate
         scheduler.step()
-        # print(f"Learning rate: {scheduler.get_last_lr()}")
         
-        #log epoch loss
-        if i%cfg.log_frequency == 0:
-            logger.log({'epoch': i, 'train_loss': epoch_train_loss})
-            
 
-
-        #eval model 
+        #---------------------------- val ----------------------------
         if i%cfg.eval_frequency == 0:
 
             model.eval()
-
+            
             for _, (x, y) in enumerate(tqdm(val_loader)):
-                x_val, y_val = x, y
-                
-                x_val, y_val = x_val.float().to(device), y_val.float().to(device)
                 with torch.no_grad():
-                    y_pred = model(x_val)
-                    val_loss = criterion(y_pred, y_val)
 
+                    val_loss = model_prediction(cfg,device, model, x, y, criterion_list, weight_list)
                     epoch_val_loss += val_loss.item()
                 
             epoch_val_loss = epoch_val_loss / len(val_loader)
 
-            logger.log(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}")
+            logger.log(f"epoch: {i}, train_loss: {epoch_train_loss}, val_loss: {epoch_val_loss}, learning_rate: {scheduler.get_last_lr()[0]}")
 
             if cfg.log_wandb:
                 wandb.log({'epoch': i, 'train_loss': epoch_train_loss})
                 wandb.log({'epoch': i, 'val_loss': epoch_val_loss})
+                wandb.log({'epoch': i, 'learning_rate': scheduler.get_last_lr()[0]})
             train_loss_history.append(epoch_train_loss)
             val_loss_history.append(epoch_val_loss)
 
@@ -296,9 +374,13 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
     """
     model.eval()
 
-    error = 0
+    height_error = 0
+    xy_error = 0
     y_val_list = []
     y_pred_list = []
+
+    pred_label_list = []
+    true_label_list = []
 
     for _, (x, y) in enumerate(tqdm(val_loader)):
 
@@ -306,42 +388,90 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
     
         with torch.no_grad():
-            y_pred = model(x_val)
 
-            #use only first column element of y_pred and y_val
-            # y_pred = y_pred[:,0]
-            # y_val = y_val[:,0]
+            if cfg.output_representation == 'height_radianclass':
+                y_pred_height, y_pred_class = model(x_val)
 
-            # print(f"y_pred: {y_pred}, y_val: {y_val}")
-            y_diff = y_pred - y_val
-            # print(f"y_diff: {y_diff}")
+                y_diff = y_pred_height - y_val[:,0]
 
-            #get absolute error
-            error += torch.mean(torch.abs(y_diff))
+                #acuracy of the classification
+                _, y_pred_class = torch.max(y_pred_class, 1)
+                pred_label_list.extend(y_pred_class.cpu().numpy())
+                true_label_list.extend(y_val[:,1].cpu().numpy())
+
+                #show prediction and true label
+                # print(f"y_pred_class: {y_pred_class}, y_val: {y_val[:,1]}")
+                # print(f"h_pred: {y_pred_height}, h_val: {y_val[:,0]}")
+                
+            elif cfg.output_representation == 'height':
+                y_pred = model(x_val)
+
+                #use only first column element of y_pred and y_val
+
+
+                # print(f"y_pred: {y_pred}, y_val: {y_val}")
+                y_diff = y_pred - y_val
+                # print(f"y_diff: {y_diff}")
+
+                #get absolute error
+                height_error += torch.mean(torch.abs(y_diff))
         
-        #get tensor values and append them to list
-        y_val_list.extend(y_val.cpu().numpy())
-        y_pred_list.extend(y_pred.cpu().numpy())
+          
+                #get tensor values and append them to list
+                y_val_list.extend(y_val.cpu().numpy())
+                y_pred_list.extend(y_pred.cpu().numpy())
+
+            else:
+                y_pred = model(x_val)
+
+                #use only first column element of y_pred and y_val
+                # y_pred = y_pred[:,0]
+                # y_val = y_val[:,0]
+
+                # print(f"y_pred: {y_pred}, y_val: {y_val}")
+                y_diff = y_pred - y_val
+                # print(f"y_diff: {y_diff}")
+                height_diff = y_pred[:,0] - y_val[:,0]
+                x_diff = y_pred[:,1] - y_val[:,1]
+                y_diff = y_pred[:,2] - y_val[:,2]
+
+                xy_diff = x_diff + y_diff
+
+                #get absolute error
+                height_error += torch.mean(torch.abs(height_diff))
+                xy_error += torch.mean(torch.abs(xy_diff))
         
-            
-    #sum up the rmse and divide by number of batches
-    error = error / len(val_loader)
+        
+          
+                #get tensor values and append them to list
+                y_val_list.extend(y_val.cpu().numpy())
+                y_pred_list.extend(y_pred.cpu().numpy())
+        
 
-    logger.log(f"Mean Absolute Error: {error}")
+    if cfg.output_representation == 'height_radianclass':
+        accuracy = accuracy_score(true_label_list, pred_label_list)
+        logger.log(f"Accuracy: {accuracy}")
 
-    #stack the list of array to numpy array
-    y_val_list = np.stack(y_val_list)
-    y_pred_list = np.stack(y_pred_list)
+    else:    
+        #sum up the rmse and divide by number of batches
+        height_error = height_error / len(val_loader)
+        xy_error = xy_error / len(val_loader)
 
-    if cfg.visuaize_regression:
-        #plot regression line
-        eval_utils.plot_regression(cfg, y_pred_list, y_val_list)
+        logger.log(f"Height Error: {height_error}, xy Error: {xy_error}")
+
+        #stack the list of array to numpy array
+        y_val_list = np.stack(y_val_list)
+        y_pred_list = np.stack(y_pred_list)
+
+        if cfg.visuaize_regression:
+            #plot regression line
+            eval_utils.plot_regression(cfg, y_pred_list, y_val_list)
 
         
         
 
 
-    return error
+    return height_error
 
         
 

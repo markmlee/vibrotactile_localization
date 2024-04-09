@@ -43,9 +43,10 @@ class AudioDataset(Dataset):
     AudioDataset class to load and process audio data    
     """
 
-    def __init__(self, cfg = None, data_dir = None, transform = None):
+    def __init__(self, cfg = None, data_dir = None, transform = None, augment = False):
         print(f" --------- initializing DS ---------")
         self.cfg = cfg
+        self.augment = augment
 
         if transform is not None: # Only for audio datasets 
             # self.resampler = T.Resample(orig_freq = self.cfg.sample_rate, new_freq = self.cfg.resample_rate)
@@ -180,6 +181,29 @@ class AudioDataset(Dataset):
             label[1] = x
             label = np.append(label, y) #--> [height, x, y]
 
+        elif cfg.output_representation == 'height':
+            label = label[0]
+
+        elif cfg.output_representation == 'height_radianclass':
+            radian = label[1]
+            #convert radian  ranging from -2.7 to 2.7 into K classes
+            #-2.7 : 0, ..., 2.7 : K-1
+            #-2.7:0, -2.025:1, -1.35:2, -0.675:3, 0:4, 0.675:5, 1.35:6, 2.025:7, 2.7:8
+            
+            original_min=-2.7
+            original_max=2.7
+            num_classes=8
+
+            # Normalize
+            normalized = (radian - original_min) / (original_max - original_min)
+            # Scale to number of classes and convert to integer
+            class_label = int(normalized * num_classes)
+            # Ensure the class label is within the range [0, num_classes-1]
+            class_label = min(class_label, num_classes - 1)
+
+            label[1] = class_label
+
+
 
 
         # #convert to tensor
@@ -196,21 +220,36 @@ class AudioDataset(Dataset):
         #default starting bin is center of spectrogram
         starting_bin = 175
 
-        if self.cfg.augment_timeshift:
-            #crop spectrogram to 1 sec (bin size of 345) from a random starting point
-            starting_bin = random.randint(150,220) #--> 0 to 345
-        x = x[:, :, starting_bin:starting_bin + 345] #--> [num_mics, num_mels, 345] 
+
+        if self.augment:
+
+            if self.cfg.augment_timeshift:
+                #crop spectrogram to 1 sec (bin size of 345) from a random starting point
+                starting_bin = random.randint(150,220) #--> 0 to 345
+            x = x[:, :, starting_bin:starting_bin + 345] #--> [num_mics, num_mels, 345] 
+
+            if self.cfg.affine_transform:
+                #apply affine transformation
+                affine_transform = RandomAffine(degrees=0, translate=(0.1, 0.))
+                x = affine_transform(x)
 
 
-        #apply augmentation
-        if self.cfg.augment_timemask:
-            time_masking = T.TimeMasking(time_mask_param=40)
-            x = time_masking(x)
+            #apply augmentation
+            if self.cfg.augment_timemask:
+                time_masking = T.TimeMasking(time_mask_param=40)
+                x = time_masking(x)
 
-        if self.cfg.augment_freqmask:
+            if self.cfg.augment_freqmask:
 
-            freq_masking = T.FrequencyMasking(freq_mask_param=5)
-            x = freq_masking(x)
+                freq_masking = T.FrequencyMasking(freq_mask_param=5)
+                x = freq_masking(x)
+
+        else: #no augmentation
+            #center crop the spectrogram around starting bin (bin size of 345). 
+            # Should be 175/2 on the left and 175/2 on the right
+            start = (x.shape[2] - 345) // 2
+            end = start + 345
+            x = x[:, :, start:end]
 
         
 
@@ -223,7 +262,7 @@ def load_data(cfg, train_or_val = 'val'):
     Load the dataset and split it into train and validation
     """
     
-    dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform)
+    dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augment = True)
 
   
     #visuaize dataset
