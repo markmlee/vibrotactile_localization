@@ -19,11 +19,11 @@ import time
 import wave
 import sys
 import librosa
-import torch
-import torchaudio
+# import torch
+# import torchaudio
 import os
-import torch.nn.functional as F
-import noisereduce as nr
+# import torch.nn.functional as F
+# import noisereduce as nr
 
 def animate_ylabel(X_mic_data,Y_label_data):
     """
@@ -112,7 +112,7 @@ def verify_dataset(cfg, data_dir):
 
         print(f"loading wav file: {wav_filename}")
 
-        wav, sample_rate = torchaudio.load(wav_filename)
+        # wav, sample_rate = torchaudio.load(wav_filename)
         sample_rate = sample_rate
 
         #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
@@ -146,9 +146,9 @@ def verify_dataset(cfg, data_dir):
         Y_label_data.append(y_label)
 
     # stack wav files into a tensor of shape (num_mics, num_samples)
-    X_mic_data = torch.stack(X_mic_data, dim=0)
+    # X_mic_data = torch.stack(X_mic_data, dim=0)
     print(f"dimension of X input tensor: {X_mic_data.size()}") #--> dimension of wav tensor: torch.Size([N, 88200])
-    Y_label_data = torch.tensor(Y_label_data)
+    # Y_label_data = torch.tensor(Y_label_data)
     print(f"dimension of Y label tensor: {Y_label_data.size()}") #--> dimension of label tensor: torch.Size([N, 3])
 
     animate_ylabel(X_mic_data,Y_label_data)
@@ -203,7 +203,7 @@ def plot_fft(waves, sample_rate, device_list):
 
         # Apply FFT to background noise to determine the frequency content
         for i in range(len(waves)):
-            fft = torch.fft.rfft(waves[i])
+            # fft = torch.fft.rfft(waves[i])
             background_fft.append(fft)
 
         # Plot 6 subplots of background noise to see freq components
@@ -213,8 +213,8 @@ def plot_fft(waves, sample_rate, device_list):
         for i, ax in enumerate(axs):
             if i < len(waves):
                 # Calculate magnitude of FFT and frequency bins
-                magnitude = torch.abs(background_fft[i])
-                frequency = torch.fft.rfftfreq(waves[i].shape[0], d=1/sample_rate)
+                # magnitude = torch.abs(background_fft[i])
+                # frequency = torch.fft.rfftfreq(waves[i].shape[0], d=1/sample_rate)
                 
                  # Plotting with black line color
                 ax.plot(frequency.numpy(), magnitude.numpy(), color='black')
@@ -552,10 +552,10 @@ def load_background_noise(cfg):
 
         for i in range(num_mics):
             wav_filename = f"{path_name}/mic{cfg.device_list[i]}.wav"
-            wav, sample_rate = torchaudio.load(wav_filename)
+            # wav, sample_rate = torchaudio.load(wav_filename)
 
             #extend wav length by wrapping around twice
-            wav = torch.cat([wav, wav], dim=1)
+            # wav = torch.cat([wav, wav], dim=1)
 
             background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
         
@@ -575,7 +575,7 @@ def subtract_background_noise(y_single_waveform, noise_single_waveform, sample_r
     # Apply noise reduction
     y_single_waveform = nr.reduce_noise(y=y_single_waveform, sr=sample_rate, y_noise=background, stationary=True, n_std_thresh_stationary = 4.5)
     #convert to tensor
-    y_single_waveform = torch.tensor(y_single_waveform, dtype=torch.float32)
+    # y_single_waveform = torch.tensor(y_single_waveform, dtype=torch.float32)
     return y_single_waveform
 
 

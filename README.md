@@ -4,9 +4,13 @@
 pip install librosa
 pip install sounddevice
 pip install pysoundfile
+pip install hydra-core --upgrade
+pip install easydict
+pip install wandb
 
 ## initial setup
 See what mic devices are available. Running code directory `/home/iam-lab/audio_localization/audio_datacollection/scripts`
+Change absolute path in datasets.py line 23.
 
 ```
 python3 record_all_mics.py -l

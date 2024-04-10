@@ -22,8 +22,25 @@ import os
 import contextlib
 import time
 
+#ros
+import rospy
+import sounddevice as sd
+import soundfile as sf
+
+sys.path.append('/home/iam-lab/audio_localization/catkin_ws/src/sounddevice_ros/msg')
+from sounddevice_ros.msg import AudioInfo, AudioData
+import numpy  # Make sure NumPy is loaded before it is used in the callback
+
 class Microphone:
     def __init__(self, devicelist, fs=44100, channels_in=1):
+        """
+        Initialize the Microphone class with the given device list.
+        
+        Args:
+            devicelist: List of device IDs for the microphones to be used.
+            fs (int, optional): Sampling frequency. Defaults to 44100 Hz.
+            channels_in (int, optional): Number of input channels. Defaults to 1.
+        """
         self.record_duration = 1
         self.fs = fs
         self.path = "./"
@@ -38,6 +55,15 @@ class Microphone:
 
 
     def audio_callback(self, q):
+        """
+        Creates a callback function for the audio stream.
+        
+        Args:
+            q (queue.Queue): Queue to which audio data will be put.
+
+        Returns:
+            function: A callback function that is called by the audio stream.
+        """
 
         def callback(data, frames, time, status):
  
@@ -47,6 +73,9 @@ class Microphone:
 
 
     def init_mic_queue(self):
+        """
+        Initializes a queue and an input stream for each microphone device.
+        """
         for i in range(self.number_of_mics):
             #create instance of queue for each device
             queue_name = f"q{i}" #q0 = queue.Queue() ... q6 = queue.Queue()
@@ -64,12 +93,25 @@ class Microphone:
             
 
     def set_record_duration(self, duration):
+        """
+        Set the duration for which the microphones will record audio.
+        
+        Args:
+            duration (int): Duration in seconds.
+        """
         self.record_duration = duration
 
-    def set_path(self, path):
-        self.path = path
 
     def record_all_mics(self, save_path, duration=1, trial_count=0, gt_label=[0,0]):
+        """
+        Record audio from all microphones and save it to the specified path.
+
+        Args:
+            save_path (str): Path where the audio files will be saved.
+            duration (int, optional): Duration in seconds for the recording. Defaults to 1.
+            trial_count (int, optional): Trial number for the recording. Defaults to 0.
+            gt_label (list, optional): Ground truth label for corrresponding audio files. i.e, used for 2D localization. Defaults to [0, 0].
+        """
 
         #create a folder for each trial
         save_folder_path = f"{save_path}trial{trial_count}/"
@@ -84,8 +126,6 @@ class Microphone:
         SoundFile_list = []
 
         for i in range(self.number_of_mics):
-            
-        
             #file name with save path
             file_name = f"{save_folder_path}mic{self.devicelist[i]}.wav"
             # print(f"file name: {file_name}")
@@ -95,8 +135,6 @@ class Microphone:
                 os.remove(file_name)
             except OSError:
                 pass
-
-            
 
             #create soundfile for each device
             sf = SoundFile(
@@ -128,7 +166,40 @@ class Microphone:
 
         #stop all contexts
         
+    def ros_publish_mics(self, output_topic_list):
+        """
+        Main blocking function to continuously publish audio data to ROS topics.
 
+        Args:
+            output_topic_list (list): List of ROS topics to which the audio data will be published.
+        """
+
+        #default output topic list based on number of mics... [audio0, audio1, audio2, audio3, audio4, audio5]
+        if len(output_topic_list) == 0:
+            output_topic_list = [f"/audio{i}" for i in range(self.number_of_mics)]
+
+        #create ROS publisher for each device
+        pub_list = []
+        for i in range(self.number_of_mics):
+            pub = rospy.Publisher(output_topic_list[i], AudioData, queue_size=10)
+            pub_list.append(pub)
+
+        rospy.init_node('audio_pub', anonymous=True)
+        
+        #rate
+        rate = rospy.Rate(100) # 10hz
+    
+        #publish audio data to each topic
+        while not rospy.is_shutdown():
+            for i in range(self.number_of_mics):
+                audio_data = AudioData()
+                audio_data.data = self.queue_list[i].get()
+                pub_list[i].publish(audio_data)
+
+            rate.sleep()
+        
+
+    
 
 
 
