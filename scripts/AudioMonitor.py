@@ -2,12 +2,15 @@
 import sys
 import os
 import numpy as np
+import threading
 
 #ros
 import rospy
 from std_msgs.msg import String  # Replace with actual audio message type
 sys.path.append('/home/iam-lab/audio_localization/catkin_ws/src/sounddevice_ros/msg')
 from sounddevice_ros.msg import AudioInfo, AudioData
+
+import microphone_utils as mic_utils
 
 # from your_nn_model_package import YourNNModel  # Import your neural network model class
 
@@ -33,7 +36,15 @@ class AudioMonitor:
 
         # Ratio of overlap between consecutive samples
         self.sample_overlap_ratio = sample_overlap_ratio #if 0.5, then 50% overlap --> publish freq is 2*sample_duration, if 1.0, then no overlap --> publish freq is same as sample_duration
+        self.overlap_samples = int(self.fs * self.sample_duration * self.sample_overlap_ratio)
+
         self.rolling_buffers = {topic: np.zeros((1, self.num_channels)) for topic in audio_topics}
+
+        self.buffer_sizes = np.zeros(self.num_mics)
+
+        # Initialize a lock
+        self.lock = threading.Lock()
+
 
 
         self.audio_subscribers = []
@@ -59,45 +70,59 @@ class AudioMonitor:
             msg: The incoming ROS message containing audio data.
         """
         # print(f"topic: {topic} and msg size: {len(msg.data)}")
+        
+        # Lock the CB function to prevent race conditions that cause N topics to mess up rolling buffer updates
+        with self.lock:
 
-        # Get the rolling buffer for the current topic
-        rolling_buffer = self.rolling_buffers[topic]
+            # Get the rolling buffer for the current topic
+            rolling_buffer = self.rolling_buffers[topic]
 
-        #buffer the incoming data to the desired length
-        input_data = np.asarray(msg.data).reshape((-1,self.num_channels))
-        # print(f"self.rolling_buffer shape[0]: {self.rolling_buffer.shape[0]} input_data shape: {input_data.shape}")
+            #buffer the incoming data to the desired length
+            input_data = np.asarray(msg.data).reshape((-1,self.num_channels))
+            # print(f"self.rolling_buffer shape[0]: {self.rolling_buffer.shape[0]} input_data shape: {input_data.shape}")
 
-        ## Append the input_data to the rolling buffer
-        rolling_buffer = np.concatenate((rolling_buffer, input_data))
+            ## Append the input_data to the rolling buffer
+            rolling_buffer = np.concatenate((rolling_buffer, input_data))
 
-        # Check if the buffer is full
-        if rolling_buffer.shape[0] > int(self.fs * self.sample_duration):
+            # Update the rolling buffer
+            self.rolling_buffers[topic] = rolling_buffer
             
-            # CHECK only 1 audio topic to see if full, for processing. 
-            # DON'T want separate processing from all the individual topics
-            print(f"topic {topic} is full")
-            if topic == '/audio0':
-                # self.process_data()
-            
-                #publish contact event
-                self.pub.publish("contact_event")
+            # Check if all buffers are full
+            if all(buffer.shape[0] > int(self.fs * self.sample_duration) for buffer in self.rolling_buffers.values()):
+                # If all buffers are full, process the data
+                self.process_data()
 
-            # Slide the buffer by the overlap ratio
-            overlap_samples = int(self.fs * self.sample_duration * self.sample_overlap_ratio)
-            rolling_buffer = rolling_buffer[overlap_samples:]
-
-        # Update the rolling buffer
-        self.rolling_buffers[topic] = rolling_buffer
+                # Slide all buffers by the overlap ratio
+                for topic in self.rolling_buffers:
+                    self.rolling_buffers[topic] = self.rolling_buffers[topic][self.overlap_samples:]
 
 
+    def process_data(self):
+        """
+        Process the audio data in the rolling buffer.
+        0. Pack the audio data from rolling buffer
+        1. Check for collision event
+        2. Transform wav data to mel spectrogram
+        3. visualize the mel spectrogram
+        """
 
-        # Process the audio data and check for a contact event
-        contact_event = self.check_for_contact_event(msg)
-        if contact_event:
-            # Call inference on your neural network model
-            contact_location = self.nn_model.infer_contact_location(msg)
-            # Publish the contact location
-            self.contact_loc_publisher.publish(contact_location)
+        
+        for idx,topic in enumerate(self.rolling_buffers):
+            # print(f"topic: {topic} and shape: {self.rolling_buffers[topic].shape}")
+            self.buffer_sizes[idx] = self.rolling_buffers[topic].shape[0]
+        print(f"buffer_sizes: {self.buffer_sizes}")
+
+
+        #put rolling buffer into a list
+        data_list = [self.rolling_buffers[topic] for topic in self.rolling_buffers]
+
+        mic_utils.plot_time_domain(data_list, self.fs)
+
+
+
+
+
+        
 
     def check_for_contact_event(self, audio_data):
         """
@@ -115,14 +140,10 @@ class AudioMonitor:
         # return some_condition(audio_data)
         pass
 
-    def process_data(self):
-        """
-        Process the audio data in the rolling buffer.
-        1. Pack the audio data from rolling buffer
-        2. Transform wav data to mel spectrogram
-        3. visualize the mel spectrogram
-        """
-        
+
+
+
+
         
 
 
@@ -130,6 +151,8 @@ if __name__ == '__main__':
     print(f" ------ starting audio monitor ------  ")
     rospy.init_node('audio_monitor')
     audio_topics = ['/audio0', '/audio1', '/audio2', '/audio3', '/audio4', '/audio5']  #add additional audio topics if needed
+    # audio_topics = ['/audio0', '/audio1', '/audio2']  #add additional audio topics if needed
+
 
     fs = 44100  # Sample rate of the audio data
     sample_duration = 1.0  # duration of the audio window for processing (in sec)
@@ -139,4 +162,5 @@ if __name__ == '__main__':
     sample_overlap_ratio = 1.0  # ratio of overlap between consecutive samples (0 to 1)
 
     audio_monitor = AudioMonitor(audio_topics, fs, sample_duration, sample_overlap_ratio)
+    
     rospy.spin()

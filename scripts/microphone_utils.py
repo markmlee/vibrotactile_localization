@@ -252,9 +252,13 @@ def plot_time_domain(data_list, fs):
     plt.title('Audio Data')
     plt.xlabel('Time [s]')
     plt.ylabel('Amplitude')
+
+    plt.ylim(-1, 1)
     plt.legend()
 
-    plt.show()
+    plt.show(block=False)
+    plt.pause(2)
+    plt.close()
 
 def grid_plot_1mic_all_trials(data_list, fs):
     """
