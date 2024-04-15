@@ -20,7 +20,7 @@ import librosa
 
 
 #import function from another directory for plotting
-sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
 import microphone_utils as mic_utils
 
 
@@ -121,10 +121,7 @@ class AudioDataset(Dataset):
             # print(f"sample rate: {sample_rate}") #--> sample rate: 44100
 
             #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
-            if wav.size(1) < self.cfg.max_num_frames:
-                wav = F.pad(wav, (0, self.cfg.max_num_frames - wav.size(1)), mode='circular'   )
-            else:
-                wav = wav[:, :self.cfg.max_num_frames]
+            wav = mic_utils.trim_or_pad(wav, self.cfg.max_num_frames)
 
 
             #append to list of wavs

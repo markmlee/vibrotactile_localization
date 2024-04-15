@@ -19,11 +19,11 @@ import time
 import wave
 import sys
 import librosa
-# import torch
-# import torchaudio
+import torch
+import torchaudio
 import os
-# import torch.nn.functional as F
-# import noisereduce as nr
+import torch.nn.functional as F
+import noisereduce as nr
 
 def animate_ylabel(X_mic_data,Y_label_data):
     """
@@ -639,6 +639,7 @@ def plot_envelope_ratio(data_list):
 
 def plot_envelope(frame_size, hop_length, devicelist, mics_to_plot, save_path_data, total_trial_count):
     """
+    given directory
     """
     
 
@@ -668,6 +669,30 @@ def plot_envelope(frame_size, hop_length, devicelist, mics_to_plot, save_path_da
     plt.title("Waveform for (Amplitude Envelope)")  
     # Show the plot
     plt.show()  
+
+def plot_envelope_from_signal(signal, frame_size, hop_length):
+    """
+    given signal, plot the amplitude envelope
+    """
+    envelope = amplitude_envelope(signal, frame_size, hop_length)
+
+    # Generate the frame indices
+    frames = range(0, len(envelope))  
+    # Convert frames to time
+    time = librosa.frames_to_time(frames, hop_length=hop_length)  
+    # Create a new figure with a specific size
+    plt.figure(figsize=(15, 7))  
+    # Display the waveform of the signal
+    librosa.display.waveshow(signal, alpha=0.5, color='b')
+    # Plot the amplitude envelope over time
+    plt.plot(time, envelope, color="r") 
+    # Set the title of the plot
+    plt.title("Waveform for (Amplitude Envelope)")  
+    
+    # Show the plot
+    plt.show(block=False)
+    plt.pause(1)
+    plt.close()
 
 
 def concat_wav_files_dataset(load_path, trial_count,mic_id):
@@ -734,7 +759,7 @@ def amplitude_envelope(signal, frame_size=1024, hop_length=512):
     output = np.array(res)
 
     #print size of signal and output
-    print(f"size of signal: {len(signal)}, size of output: {len(output)}")
+    # print(f"size of signal: {len(signal)}, size of output: {len(output)}")
     return output
 
 
@@ -763,6 +788,35 @@ def trim_to_same_length(data_list):
 
     return data_list
 
+def trim_or_pad(wav, max_num_frames):
+    """
+    either pad or wav clips to be same length as desired max_num_frames
+    return modified wav
+    """
+    
+    #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
+    if wav.size(1) < max_num_frames:
+        wav = F.pad(wav, (0, max_num_frames - wav.size(1)), mode='circular'   )
+    else:
+        wav = wav[:, :max_num_frames]
+
+    return wav
+
+def trim_or_pad_single(wav, max_num_frames):
+    """
+    either pad or clip to be same length as desired max_num_frames
+    [samples, channel]
+    return modified wav
+    """
+    
+    #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
+    if wav.size(0) < max_num_frames:
+        wav = F.pad(wav, (0, max_num_frames - wav.size(0)), mode='circular'   )
+    else:
+        wav = wav[:max_num_frames,:]
+
+    
+    return wav
 
 def preprocess_data(mic_signals_from_all_trials, GT_labels):
     """

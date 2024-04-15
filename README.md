@@ -7,6 +7,8 @@ pip install pysoundfile
 pip install hydra-core --upgrade
 pip install easydict
 pip install wandb
+pip install noisereduce
+pip install hydra-core --upgrade
 
 ## initial setup
 See what mic devices are available. Running code directory `/home/iam-lab/audio_localization/audio_datacollection/scripts`
@@ -38,7 +40,7 @@ python3 record_with_human.py --record 0
 
 
 
-## running audio with franka
+## Robot motion for collecting audio with franka
 Setup USB lines, check devicelist and specify in the code.
 
 To verify all mics are up and registered in the expected sequence, let's record a sequence of taps along the mics and visualize that the expected sequence of mics are responding. Plot from audio .wav files.
@@ -75,4 +77,16 @@ python train.py
 Update the eval.yaml or eval2D.yaml. Specify the desired model path.  
 ```
 python eval.py 
+```
+
+
+## inferencing on the robot
+Stream the microphones via ROS topics. Input the device IDs according to the number of mics.
+```
+python sounddevice_ros_publisher_multi.py -d 2 10 11 12 13 14
+```
+
+Run the ROS node to monitor audio topic and output contact classification
+```
+python AudioMonitor.py
 ```
