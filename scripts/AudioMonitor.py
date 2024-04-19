@@ -43,7 +43,7 @@ TRANSFORMS = {
 }
 
 class AudioMonitor:
-    def __init__(self, cfg, audio_topics, fs, sample_duration, sample_overlap_ratio):
+    def __init__(self, cfg, audio_topics, fs, buffer_duration, sample_duration, main_loop_rate):
         """
         Initializes the AudioMonitor class with the given audio topics.
         
@@ -54,12 +54,11 @@ class AudioMonitor:
         self.fs = fs  # Sample rate of the audio data
         self.num_channels = 1 # Number of audio channels
         self.sample_duration = sample_duration # Size of the audio window for processing (in seconds)
+        self.buffer_duration = buffer_duration # Duration of the rolling buffer to keep last previous samples (in seconds)
         self.num_mics = len(audio_topics) # Number of microphones
+        self.main_loop_rate = main_loop_rate # Rate of the main loop to process audio data
         self.audio_transform = TRANSFORMS[cfg.audio_transform] # Transform to apply to the audio data
 
-        # Ratio of overlap between consecutive samples
-        self.sample_overlap_ratio = sample_overlap_ratio #if 0.5, then 50% overlap --> publish freq is 2*sample_duration, if 1.0, then no overlap --> publish freq is same as sample_duration
-        self.overlap_samples = int(self.fs * self.sample_duration * self.sample_overlap_ratio)
 
         #dictionary to store rolling buffers for each audio topic
         self.rolling_buffers = {topic: np.zeros((1, self.num_channels)) for topic in audio_topics}
@@ -103,27 +102,19 @@ class AudioMonitor:
 
             #buffer the incoming data to the desired length
             input_data = np.asarray(msg.data).reshape((-1,self.num_channels))
-            # print(f"self.rolling_buffer shape[0]: {self.rolling_buffer.shape[0]} input_data shape: {input_data.shape}")
 
             ## Append the input_data to the rolling buffer
             rolling_buffer = np.concatenate((rolling_buffer, input_data))
 
+
+            # If the buffer is longer than the desired length 
+            if rolling_buffer.shape[0] > int(self.fs * self.buffer_duration):
+                #trim the oldest part of the buffer by the size of the newly appended input
+                rolling_buffer = rolling_buffer[-int(self.fs * self.buffer_duration):]
+            
             # Update the rolling buffer
             self.rolling_buffers[topic] = rolling_buffer
             
-            # Check if all buffers are full
-            # if full, process the data and then call prediction on model
-            if all(buffer.shape[0] > int(self.fs * self.sample_duration) for buffer in self.rolling_buffers.values()):
-                # If all buffers are full, process the data
-                processed_audio, label = self.process_data()
-
-                if processed_audio is not None:
-                    # self.predict_location(processed_audio)
-                    self.predict_location_eval(processed_audio, label)
-
-                # Update buffer by sliding all buffers by the overlap ratio
-                for topic in self.rolling_buffers:
-                    self.rolling_buffers[topic] = self.rolling_buffers[topic][self.overlap_samples:]
 
     def load_xy_single_trial(self, cfg, trial_n):
         """
@@ -190,40 +181,31 @@ class AudioMonitor:
         return the mel spectrogram data
         """
 
-        #print buffer sizes for debugging
-        for idx,topic in enumerate(self.rolling_buffers):
-            # print(f"topic: {topic} and shape: {self.rolling_buffers[topic].shape}")
-            self.buffer_sizes[idx] = self.rolling_buffers[topic].shape[0]
-        # print(f"buffer_sizes: {self.buffer_sizes}")
-
 
         #put rolling buffer into a list
         data_list = [self.rolling_buffers[topic] for topic in self.rolling_buffers]
 
-        # mic_utils.plot_time_domain(data_list, self.fs)
+        
+
+        # create a smaller window for quickly checking for collision
+        sub_window_size = int(self.fs * self.sample_duration)//self.main_loop_rate
+        # Calculate the start and end indices for the sub-window
+        start_index = (self.rolling_buffers['/audio0'].shape[0] - sub_window_size) // 2
+        end_index = start_index + sub_window_size
+
+        # Create the sub-window from the rolling buffer
+        sub_window_data = self.rolling_buffers['/audio0'][start_index:end_index]
 
         #check collision by enveloping the audio data
-        has_collision = self.check_for_contact_event(data_list)
+        has_collision = self.check_for_contact_event(sub_window_data)
 
-        debug = True
         #transform wav data to mel spectrogram only upon collision
         if has_collision:
 
-            # ====================================================================================================
-            # if debug:
-            #     #get all directory path to trials
-            #     self.dir = sorted([os.path.join(self.cfg.data_dir, f) for f in os.listdir(self.cfg.data_dir) if f.startswith('trial')], key=lambda x: int(os.path.basename(x)[5:]))                #filter out directory that does not start with 'trial'
-            #     self.dir = [d for d in self.dir if d.split('/')[-1].startswith('trial')]
+            # center around the max spike in the audio data 
+            trimmed_audio_list = mic_utils.trim_audio_around_peak(data_list, self.fs, self.sample_duration)
 
-
-            #     #load audio data from file
-            #     data, label = self.load_xy_single_trial(self.cfg, self.debug_trial_counter)
-
-            #     self.debug_trial_counter += 1
-            # ===================================================================================================
-
-            #trim audio to equal length
-            trimmed_audio_list = mic_utils.trim_to_same_length(data_list)
+            # mic_utils.plot_time_domain(trimmed_audio_list, self.fs)
 
             #convert audio list to tensor
             tensor_list = [torch.from_numpy(np_array) for np_array in trimmed_audio_list]
@@ -297,7 +279,7 @@ class AudioMonitor:
         collision_threshold = self.cfg.collision_threshold #threshold for collision event for mic0, no contact values are 0.0005 
 
         
-        mic_envelop = mic_utils.amplitude_envelope(audio_data[0], frame_size, hop_length)
+        mic_envelop = mic_utils.amplitude_envelope(audio_data, frame_size, hop_length)
         # mic_utils.plot_envelope_from_signal(audio_data[0], frame_size, hop_length) # --> quick visualization of envelope
 
         #check for collision event. Collision is when the envelope is above a certain threshold
@@ -362,14 +344,39 @@ def main(cfg: DictConfig):
 
 
     fs = 44100  # Sample rate of the audio data
+    buffer_duration = 2.0  # duration of the rolling buffer to keep last previous samples (in sec)
     sample_duration = 1.0  # duration of the audio window for processing (in sec)
-
-    #if 0.5, then 50% overlap --> publish freq is 2*sample_duration, 
-    #if 1.0, then no overlap --> publish freq is same as sample_duration
-    sample_overlap_ratio = 1.0  # ratio of overlap between consecutive samples (0 to 1)
-
-    audio_monitor = AudioMonitor(cfg, audio_topics, fs, sample_duration, sample_overlap_ratio)
     
+    #rate of main loop
+    main_loop_rate = 10
+    rate = rospy.Rate(main_loop_rate)
+
+    audio_monitor = AudioMonitor(cfg, audio_topics, fs, buffer_duration, sample_duration, main_loop_rate)
+
+    #sleep a few seconds for the audio buffers to fill up
+    rospy.sleep(3)
+    
+    while not rospy.is_shutdown():
+
+        
+        print(f"size of rolling buffer: {audio_monitor.rolling_buffers['/audio0'].shape}")
+
+        #retreive processed data from buffer
+        processed_audio, label = audio_monitor.process_data()
+
+        if processed_audio is not None:
+            # visualize the data before feeding into the model
+            # processed_audio_squeezed = processed_audio.squeeze(0)
+            # mic_utils.plot_spectrogram_with_cfg(cfg, processed_audio_squeezed, fs) 
+
+            #predict the contact location
+            audio_monitor.predict_location_eval(processed_audio, label)
+
+        
+
+
+        rate.sleep()
+
     rospy.spin()
 
 if __name__ == '__main__':

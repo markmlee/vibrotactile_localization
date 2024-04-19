@@ -19,11 +19,13 @@ import time
 import wave
 import sys
 import librosa
-import torch
-import torchaudio
+# import torch
+# import torchaudio
 import os
 import torch.nn.functional as F
-import noisereduce as nr
+# import noisereduce as nr
+
+
 
 def animate_ylabel(X_mic_data,Y_label_data):
     """
@@ -554,14 +556,14 @@ def load_background_noise(cfg):
         background_wavs = []
         path_name = cfg.background_dir
 
-        for i in range(num_mics):
-            wav_filename = f"{path_name}/mic{cfg.device_list[i]}.wav"
+        # for i in range(num_mics):
+            # wav_filename = f"{path_name}/mic{cfg.device_list[i]}.wav"
             # wav, sample_rate = torchaudio.load(wav_filename)
 
             #extend wav length by wrapping around twice
             # wav = torch.cat([wav, wav], dim=1)
 
-            background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
+            # background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
         
         return background_wavs
 
@@ -761,6 +763,31 @@ def amplitude_envelope(signal, frame_size=1024, hop_length=512):
     #print size of signal and output
     # print(f"size of signal: {len(signal)}, size of output: {len(output)}")
     return output
+
+def trim_audio_around_peak(data_list, fs, sample_duration):
+    """
+    Finds the peak of the audio signal and trims the signal around the peak.
+
+    Args:
+        data_list (list): The input list of audio signals.
+
+    Returns:
+        list: The list of trimmed audio signals.
+    """
+
+    # Create a list to store the trimmed audio signals
+    trimmed_data = []
+
+    peak_index = np.argmax(data_list[0])
+
+    start_index = peak_index - int(sample_duration * fs)//2
+    end_index = peak_index + int(sample_duration * fs)//2
+
+    # Trim the audio signals wiht new start and end indices
+    for data in data_list:
+        trimmed_data.append(data[start_index:end_index])
+
+    return trimmed_data
 
 
 def trim_audio_signal(audio_signals, fs=44100, start_time=0.25, end_clip_time=0.25):

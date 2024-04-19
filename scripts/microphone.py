@@ -27,8 +27,8 @@ import rospy
 import sounddevice as sd
 import soundfile as sf
 
-sys.path.append('/home/iam-lab/audio_localization/catkin_ws/src/sounddevice_ros/msg')
-from sounddevice_ros.msg import AudioInfo, AudioData
+# sys.path.append('/home/iam-lab/audio_localization/catkin_ws/src/sounddevice_ros/msg')
+# from sounddevice_ros.msg import AudioInfo, AudioData
 import numpy  # Make sure NumPy is loaded before it is used in the callback
 
 class Microphone:
