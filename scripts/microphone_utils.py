@@ -556,10 +556,10 @@ def load_background_noise(cfg):
 
         for i in range(num_mics):
             wav_filename = f"{path_name}/mic{cfg.device_list[i]}.wav"
-            # wav, sample_rate = torchaudio.load(wav_filename)
+            wav, sample_rate = torchaudio.load(wav_filename)
 
             #extend wav length by wrapping around twice
-            # wav = torch.cat([wav, wav], dim=1)
+            wav = torch.cat([wav, wav], dim=1)
 
             background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
         
