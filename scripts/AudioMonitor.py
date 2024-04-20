@@ -317,7 +317,7 @@ class AudioMonitor:
         print(f" processed_audio shape: {processed_audio.shape}")
         #squeeze batch dimension
         processed_audio_squeezed = processed_audio.squeeze(0)
-        mic_utils.plot_spectrogram_with_cfg(self.cfg, processed_audio_squeezed, self.fs)
+        # mic_utils.plot_spectrogram_with_cfg(self.cfg, processed_audio_squeezed, self.fs)
         Y_pred = self.model(processed_audio) 
         print(f"Y_pred: {Y_pred}")
 
@@ -359,7 +359,7 @@ def main(cfg: DictConfig):
     while not rospy.is_shutdown():
 
         
-        print(f"size of rolling buffer: {audio_monitor.rolling_buffers['/audio0'].shape}")
+        # print(f"size of rolling buffer: {audio_monitor.rolling_buffers['/audio0'].shape}")
 
         #retreive processed data from buffer
         processed_audio, label = audio_monitor.process_data()

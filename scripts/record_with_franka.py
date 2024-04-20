@@ -108,7 +108,7 @@ def tap_along_1D_cylinder(franka_robot, z_along_cylinder, init_z, current_ee_Rig
         contact_pt = Point()
         contact_pt.x = np.cos(gt_label[1])
         contact_pt.y = np.sin(gt_label[1])
-        contact_pt.z = gt_label[0]
+        contact_pt.z = gt_label[0]*100 #convert to cm
         pub_contactloc.publish(contact_pt)
 
 
