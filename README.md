@@ -90,3 +90,9 @@ Run the ROS node to monitor audio topic and output contact classification
 ```
 python AudioMonitor.py
 ```
+
+## Analyzing the time-shift & amplitude vs location data
+Uncomment the desired function load_data_for_amplitude() or load_data_for_timeshift() 
+```
+python process_data.py
+```
