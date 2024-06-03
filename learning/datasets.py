@@ -61,22 +61,27 @@ class AudioDataset(Dataset):
         #load data (for multiple mics in device list, get wav files)
         len_data = len(self.dir)
         
+        self.num_mic = cfg.num_channel
+
         self.X_mic_data = []
         self.Y_label_data = []
 
         #load background noise
         print(f" --------- loading background noise ---------")
-        self.background_wavs = mic_utils.load_background_noise(cfg)
-        # mic_utils.plot_fft(self.background_wavs, self.sample_rate)
+        self.background_wavs = mic_utils.load_background_noise_multiChannel(cfg)
+        
 
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
             print(f"loading trial: {trial_n}")
             x_data, y_label = self.load_xy_single_trial(self.cfg, trial_n)
 
+            # print(f"size of x_data: {x_data.size()}")
+
             self.X_mic_data.append(x_data)
             self.Y_label_data.append(y_label)
 
+        print(f"size of X_mic_data: {len(self.X_mic_data)}") #--> 100 trials
         self.X_mic_data = torch.stack(self.X_mic_data)  # Shape: [len_data, num_mics, num_mels, num_bins_time]
 
         if cfg.normalize_audio_data: 
@@ -86,6 +91,15 @@ class AudioDataset(Dataset):
                 # Calculate mean and variance for each microphone across all trials
                 mean = self.X_mic_data.mean(dim=[0, 2, 3], keepdim=True)  # Mean across trials, num_mels, and num_bins_time
                 var = self.X_mic_data.var(dim=[0, 2, 3], keepdim=True)    # Variance across trials, num_mels, and num_bins_time
+
+                #save the mean and var output to a npy file (mean dimension: [num_mics, 1, 1, 1], var dimension: [num_mics, 1, 1, 1])
+                if cfg.save_meanvar_output:
+                    #stack mean and var into a single tensor
+                    meanvar = torch.cat((mean, var), dim=0)
+                    #save to npy file
+                    np.save(f"{cfg.data_dir}/meanvar.npy", meanvar.cpu().numpy())
+                    sys.exit()
+                    
 
 
                 # Normalize the X_mic_data
@@ -108,12 +122,11 @@ class AudioDataset(Dataset):
         Load the data from a single trial
         """
 
-        num_mics = len(self.cfg.device_list)
-
+        
         wavs = []
         melspecs = []
 
-        for i in range(num_mics):
+        for i in range(len(cfg.device_list)):
             wav_filename = f"{self.dir[trial_n]}/mic{self.cfg.device_list[i]}.wav"
 
             wav, sample_rate = torchaudio.load(wav_filename)
@@ -123,22 +136,54 @@ class AudioDataset(Dataset):
             #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
             wav = mic_utils.trim_or_pad(wav, self.cfg.max_num_frames)
 
-
             #append to list of wavs
             wavs.append(wav.squeeze(0)) # remove the dimension of size 1
 
-            if self.cfg.subtract_background:
-                wavs[i] = mic_utils.subtract_background_noise(wavs[i], self.background_wavs[i], self.sample_rate)
-                # print(f"dim of wav after noise reduction: {wavs[i].size()}")
+            # print(f"size of wav {wav.size()}") # --> torch.Size([6, 88200])
 
             
+        # print(f"len of wavs {len(wavs)}") # --> 1 
+        #convert [ torch.Size([6, 88200]) ] into list of 6 items with 88200
+        wavs_list = []
+        for i in range(self.num_mic ):
+            wavs_list.append(wavs[0][i])
+        wavs = wavs_list
+
+        # print(f"len of wavs {len(wavs)}") # --> 6
+            
+        # center around the max spike in the audio data 
+        trimmed_wavs = mic_utils.trim_audio_around_peak(wavs, self.sample_rate, self.cfg.window_frame)
+
+        #plot trimmed wav to check if it is centered around the peak
+        # mic_utils.plot_time_domain(trimmed_wavs, self.sample_rate)
+
+
+        if self.cfg.subtract_background: 
+            #trim the background noise length to match the wav length
+            trimmed_background_wavs = mic_utils.trim_audio_around_peak(self.background_wavs, self.sample_rate, self.cfg.window_frame)
+
+        for i in range(self.num_mic ):
+            if self.cfg.subtract_background: 
+                trimmed_wavs[i] = mic_utils.subtract_background_noise(trimmed_wavs[i], trimmed_background_wavs[i], self.sample_rate)
+                # print(f"dim of wav after noise reduction: {wavs[i].size()}")
+
             #apply transform to wav file
             if self.transform:
-                mel = self.transform(self.cfg, wavs[i].float())
+                mel = self.transform(self.cfg, trimmed_wavs[i].float())
                 melspecs.append(mel.squeeze(0)) # remove the dimension of size 1
 
-        # mic_utils.plot_fft(wavs, sample_rate, self.cfg.device_list)
-        # sys.exit()
+
+        if cfg.visualize_subtract_background:
+            # mic_utils.plot_fft(self.background_wavs, cfg.sample_rate, [1,2,3,4,5,6])
+            # mic_utils.plot_fft(wavs, sample_rate, [1,2,3,4,5,6])
+            # mic_utils.plot_fft(trimmed_wavs, sample_rate, [1,2,3,4,5,6])
+
+            mic_utils.grid_plot_spectrogram(self.background_wavs, cfg.sample_rate)
+            mic_utils.grid_plot_spectrogram(wavs, cfg.sample_rate)
+            mic_utils.grid_plot_spectrogram(trimmed_wavs, cfg.sample_rate)
+            
+            sys.exit()
+            
                 
         # stack wav files into a tensor of shape (num_mics, num_samples)
         wav_tensor = torch.stack(wavs, dim=0)
@@ -213,9 +258,10 @@ class AudioDataset(Dataset):
     
     def __getitem__(self, idx):
         x,y = self.X_mic_data[idx], self.Y_label_data[idx] # --> x: full 2 sec wav/spectrogram
+        # print(f"index of x: {idx}, y: {y}")
 
         #default starting bin is center of spectrogram
-        starting_bin = 175
+        starting_bin = 0
 
 
         if self.augment:
@@ -259,7 +305,7 @@ def load_data(cfg, train_or_val = 'val'):
     Load the dataset and split it into train and validation
     """
     
-    dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augment = True)
+    dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augment = cfg.augment_data)
 
   
     #visuaize dataset
@@ -272,8 +318,9 @@ def load_data(cfg, train_or_val = 'val'):
             x = x.numpy()
             #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
             x = [x[i] for i in range(x.shape[0])]
+            # print(f"x {x}")
             # print(f"size of x: {len(x)}")
-            print(f"i: {i} and y: {y}")
+            # print(f"i: {i} and y: {y}")
             # plot mel spectrogram
             mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
 

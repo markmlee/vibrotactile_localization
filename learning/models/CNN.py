@@ -74,7 +74,7 @@ class CNNRegressor2D(nn.Module):
     def __init__(self,cfg):
         super(CNNRegressor2D, self).__init__()
         
-        input_size = len(cfg.device_list)
+        input_size = cfg.num_channel
         output_size = 2 #[height, radian]
 
         if cfg.output_representation == 'rad':

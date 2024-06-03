@@ -23,7 +23,7 @@ import contextlib
 import time
 
 #ros
-import rospy
+# import rospy
 import sounddevice as sd
 import soundfile as sf
 

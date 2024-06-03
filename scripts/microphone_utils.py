@@ -258,9 +258,8 @@ def plot_time_domain(data_list, fs):
     plt.ylim(-1, 1)
     plt.legend()
 
-    plt.show(block=False)
-    plt.pause(2)
-    plt.close()
+    plt.show()
+    
 
 def grid_plot_1mic_all_trials(data_list, fs):
     """
@@ -314,17 +313,17 @@ def grid_plot_time_domain(data_list, fs):
 
     for i in range(mic_number):
         if i < 3:
-            axs[i, 0].plot(time, data_list[i])
-            axs[i, 0].set_title(f"mic{i}")
-            axs[i, 0].set_ylabel('Amplitude')
+            axs[i, 1].plot(time, data_list[i])
+            axs[i, 1].set_title(f"mic{i}")
+            axs[i, 1].set_ylabel('Amplitude')
             if i == 2:  # Only set x-label for the bottom plot in the first column
-                axs[i, 0].set_xlabel('Time [s]')
+                axs[i, 1].set_xlabel('Time [s]')
         else:
-            axs[i-3, 1].plot(time, data_list[i])
-            axs[i-3, 1].set_title(f"mic{i}")
-            axs[i-3, 1].set_ylabel('Amplitude')
+            axs[i-3, 0].plot(time, data_list[i])
+            axs[i-3, 0].set_title(f"mic{i}")
+            axs[i-3, 0].set_ylabel('Amplitude')
             if i == 5:  # Only set x-label for the bottom plot in the second column
-                axs[i-3, 1].set_xlabel('Time [s]')
+                axs[i-3, 0].set_xlabel('Time [s]')
 
     plt.show()
 
@@ -525,13 +524,33 @@ def load_wav_files_from_dataset(devicelist, trial_count, load_path):
     """
 
     mic_data_over_trials = []
+    mic_max_amplitude_over_trials = []
 
     for mic in devicelist:
         #concat 1 mic over all trials
-        mic_data_all_trials = concat_wav_files_dataset(load_path, trial_count, mic)
+        mic_data_all_trials, mic_max_all_trials = concat_wav_files_dataset(load_path, trial_count, mic)
         mic_data_over_trials.append(mic_data_all_trials)
+        mic_max_amplitude_over_trials.append(mic_max_all_trials)
 
-    return mic_data_over_trials
+    return mic_data_over_trials, mic_max_amplitude_over_trials
+
+def load_wav_files_from_dataset_sections(devicelist, trial_start, trial_end, load_path):
+    """
+    return a list of concatenated wav files for all mics for all trials
+    """
+
+    mic_data_over_trials = []
+    mic_max_amplitude_over_trials = []
+    mic_max_index_over_trials = []
+
+    for mic in devicelist:
+        #concat 1 mic over all trials
+        mic_data_all_trials, mic_max_all_trials, mic_max_index_data = concat_wav_files_dataset_sections(load_path, trial_start, trial_end, mic)
+        mic_data_over_trials.append(mic_data_all_trials)
+        mic_max_amplitude_over_trials.append(mic_max_all_trials)
+        mic_max_index_over_trials.append(mic_max_index_data)
+
+    return mic_data_over_trials, mic_max_amplitude_over_trials, mic_max_index_over_trials
 
 def load_wav_files_as_dataset(devicelist, trial_count, load_path):
     """
@@ -753,12 +772,76 @@ def concat_wav_files_dataset(load_path, trial_count,mic_id):
         concat_data[i] = concat_data[i][:, :min_length]
 
     # print(f"concat_data[0] shape: {concat_data[0].shape}") #--> (6, min_length)
+        
+
+    #include the max amplitude of each mic in the dataset --> (N_trial, 6)
+    mic_max_data = []
+    for i in range(trial_count):
+        max_for_all_mic = np.max(np.abs(concat_data[i]), axis=1)
+        # print(f"shape of max_for_all_mic: {max_for_all_mic.shape}") #--> (6,
+        mic_max_data.append(max_for_all_mic)
+
+    # print(f"shape of mic_max_data: {len(mic_max_data)}") #--> 50
+    #convert to numpy array (N_trial, 6)
+    mic_max_data = np.array(mic_max_data)
+    # print(f"shape of mic_max_data: {mic_max_data.shape}") #--> (50, 6
 
     #convert (N_trial, 6, min_length) to (6, N_trial*min_length)
     concat_data = np.concatenate(concat_data, axis=1)
     # print(f"concat_data shape: {concat_data.shape}") #--> (6, 50*min_length)
     
-    return concat_data
+    return concat_data, mic_max_data
+
+
+def concat_wav_files_dataset_sections(load_path, trial_start, trial_end,mic_id):
+    """
+    in: directory, trial number, mic number to concatenate
+    output: concatenated wav file
+    """
+
+    concat_data = []
+
+    #for all trials, find the wav file and concatenate
+    for trial_number in range(trial_start, trial_end):
+
+        file_name = f"{load_path}trial{trial_number}/mic{mic_id}.wav"
+        data, fs = librosa.load(file_name, sr=44100, mono=False)
+        concat_data.append(data)
+        
+    # print(f"concat_data shape: {len(concat_data)}") #--> 50 trials
+    # print(f"concat_data[0] shape: {concat_data[0].shape}") #--> (6, 88320)
+    
+    #find the minimum length of all trials and then trim all trials to the minimum length
+    min_length = min(len(single_trial_data[1]) for single_trial_data in concat_data)
+    # print(f"min_length: {min_length}")
+
+    trial_count = trial_end - trial_start
+    for i in range(trial_count):
+        concat_data[i] = concat_data[i][:, :min_length]
+
+    # print(f"concat_data[0] shape: {concat_data[0].shape}") #--> (6, min_length)
+        
+
+    #include the max amplitude of each mic in the dataset --> (N_trial, 6)
+    mic_max_data = []
+    mic_max_index_data = []
+    for i in range(trial_count):
+        max_for_all_mic = np.max(np.abs(concat_data[i]), axis=1)
+        max_index_for_all_mic = np.argmax(np.abs(concat_data[i]), axis=1)
+        # print(f"shape of max_for_all_mic: {max_for_all_mic.shape}") #--> (6,
+        mic_max_data.append(max_for_all_mic)
+        mic_max_index_data.append(max_index_for_all_mic)
+
+    # print(f"shape of mic_max_data: {len(mic_max_data)}") #--> 50
+    #convert to numpy array (N_trial, 6)
+    mic_max_data = np.array(mic_max_data)
+    # print(f"shape of mic_max_data: {mic_max_data.shape}") #--> (50, 6
+
+    #convert (N_trial, 6, min_length) to (6, N_trial*min_length)
+    concat_data = np.concatenate(concat_data, axis=1)
+    # print(f"concat_data shape: {concat_data.shape}") #--> (6, 50*min_length)
+    
+    return concat_data, mic_max_data, mic_max_index_data
 
 def concat_wav_files(load_path, trial_count,mic_id):
     """
@@ -807,7 +890,7 @@ def amplitude_envelope(signal, frame_size=1024, hop_length=512):
     # print(f"size of signal: {len(signal)}, size of output: {len(output)}")
     return output
 
-def trim_audio_around_peak(data_list, fs, sample_duration):
+def trim_audio_around_peak(data_list, fs, sample_window=44100):
     """
     Finds the peak of the audio signal and trims the signal around the peak.
 
@@ -821,16 +904,27 @@ def trim_audio_around_peak(data_list, fs, sample_duration):
     # Create a list to store the trimmed audio signals
     trimmed_data = []
 
+    # print(f"size of data_list[0] {len(data_list[0])}")
     
     peak_index = np.argmax(data_list[0])
 
+    # print(f"peak_index: {peak_index}")
 
-    start_index = peak_index - int(sample_duration * fs)//2
-    end_index = peak_index + int(sample_duration * fs)//2
+    start_index = peak_index - int(sample_window)//2
+    end_index = peak_index + int(sample_window)//2
 
     # Trim the audio signals wiht new start and end indices
     for data in data_list:
         trimmed_data.append(data[start_index:end_index])
+
+    # if trimmed data size is not equal to sample_window, then pad with zeros
+    for i in range(len(trimmed_data)):
+        if len(trimmed_data[i]) < sample_window:
+            print(f" ************ padding with zeros ************ ")
+            # Calculate the number of zeros needed
+            pad_size = sample_window - len(trimmed_data[i])
+            # Convert the data to a tensor and pad it
+            trimmed_data[i] = F.pad(torch.tensor(trimmed_data[i]), (0, pad_size))
 
     return trimmed_data
 

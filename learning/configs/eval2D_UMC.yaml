@@ -1,0 +1,55 @@
+#UPDATE PARAMS
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/UMC_NO_Mask
+
+
+
+# ----- mic / data param -----
+data_dir: /home/mark/audio_learning_project/data/franka_2D_localization_full_UMC_mini/ #franka_2D_localization
+background_dir: /home/mark/audio_learning_project/data/franka_constant/background_noise/trial0/
+
+transform: mel
+
+device_list: [2]
+num_channel: 6
+augment_device_list_used: [2]
+
+max_num_frames: 88200
+window_frame: 44100
+sample_rate: 44100
+n_fft: 512
+hop_length: 128
+n_mels: 50
+resample_rate: 11025
+
+batch_size: 16
+val_batch_size: 16
+
+log_wandb: False
+
+
+# ----- preprocessing parameters -----
+subtract_background: True # ***** key parameter *****
+normalize_audio_data: True # ***** key parameter *****
+
+
+# ----- augmentation param -----
+augment_data: True #for general _getitem_ modification enable/disable
+augment_timeshift: True # ***** key parameter ***** (upon init dataset)
+affine_transform: True
+augment_timemask: False #upon getitem in dataloader
+augment_freqmask: False #upon getitem in dataloader
+
+# ----- output representation parameters -----
+
+output_representation:  'xy' #'height' #'xy' #'radian' 
+output_representation_normalize: False #for ablation study, to normalize the output representation
+
+
+# -------- debugging --------
+save_meanvar_output: False
+
+# ----- visualization parameters -----
+inspect_data_label: False # to iteratively visualize the audio & GT label in 3D plot 
+visualize_subtract_background: False
+visuaize_dataset: False # to visualize the dataloader
+visuaize_regression: True # for evaluation, to visualize the regression output 
