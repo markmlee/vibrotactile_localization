@@ -25,6 +25,8 @@ import os
 import torch.nn.functional as F
 import noisereduce as nr
 
+
+
 def animate_ylabel(X_mic_data,Y_label_data):
     """
     plot all height,x,y in 3D scatter plot.
@@ -108,11 +110,11 @@ def verify_dataset(cfg, data_dir):
         goal_joint = f"{dir[trial_n]}/goal_j1_angle.npy"
         #load np
         goal_joint = np.load(goal_joint)
-        print(f"goal_joint: {goal_joint}")
+        # print(f"goal_joint: {goal_joint}")
 
-        print(f"loading wav file: {wav_filename}")
+        # print(f"loading wav file: {wav_filename}")
 
-        # wav, sample_rate = torchaudio.load(wav_filename)
+        wav, sample_rate = torchaudio.load(wav_filename)
         sample_rate = sample_rate
 
         #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
@@ -146,9 +148,9 @@ def verify_dataset(cfg, data_dir):
         Y_label_data.append(y_label)
 
     # stack wav files into a tensor of shape (num_mics, num_samples)
-    # X_mic_data = torch.stack(X_mic_data, dim=0)
+    X_mic_data = torch.stack(X_mic_data, dim=0)
     print(f"dimension of X input tensor: {X_mic_data.size()}") #--> dimension of wav tensor: torch.Size([N, 88200])
-    # Y_label_data = torch.tensor(Y_label_data)
+    Y_label_data = torch.tensor(Y_label_data)
     print(f"dimension of Y label tensor: {Y_label_data.size()}") #--> dimension of label tensor: torch.Size([N, 3])
 
     animate_ylabel(X_mic_data,Y_label_data)
@@ -203,7 +205,7 @@ def plot_fft(waves, sample_rate, device_list):
 
         # Apply FFT to background noise to determine the frequency content
         for i in range(len(waves)):
-            # fft = torch.fft.rfft(waves[i])
+            fft = torch.fft.rfft(waves[i])
             background_fft.append(fft)
 
         # Plot 6 subplots of background noise to see freq components
@@ -213,8 +215,8 @@ def plot_fft(waves, sample_rate, device_list):
         for i, ax in enumerate(axs):
             if i < len(waves):
                 # Calculate magnitude of FFT and frequency bins
-                # magnitude = torch.abs(background_fft[i])
-                # frequency = torch.fft.rfftfreq(waves[i].shape[0], d=1/sample_rate)
+                magnitude = torch.abs(background_fft[i])
+                frequency = torch.fft.rfftfreq(waves[i].shape[0], d=1/sample_rate)
                 
                  # Plotting with black line color
                 ax.plot(frequency.numpy(), magnitude.numpy(), color='black')
@@ -344,16 +346,22 @@ def get_spectrogram(data,fs):
     """
     return img of spectrogram
     """
+    print(f"data shape: {data.shape}")
+    print(f"data: {data}")
+
+    #convert tensor to numpy array
+    data = data.numpy()
 
     S = librosa.stft(data)
     S_db = librosa.amplitude_to_db(np.abs(S), ref=np.max)
-    img = librosa.display.specshow(S_db, sr=fs, x_axis='time', y_axis='log', vmin=-80, vmax=0)
+    ax = librosa.display.specshow(S_db, sr=fs, x_axis='time', y_axis='log', vmin=-80, vmax=0)
 
-    return img
+    return S_db, ax
 
 def plot_spectrogram_all_mics(data_list, fs):
     """
     plot spectrogram for all mics in a 3x2 grid, set intensity same for all (by using vmin and vmax)
+    input: time domain, output: mel-spectrogram
     """
     print(f" ------ plotting spectrogram for all mics ------  ")
 
@@ -366,9 +374,11 @@ def plot_spectrogram_all_mics(data_list, fs):
 
     for i in range(mic_number):
         # convert to spectrogram
-        img = get_spectrogram(data_list[i], fs)
+        S_db, ax = get_spectrogram(data_list[i], fs)
+        img = axs[i//2, i%2].imshow(S_db, aspect='auto', cmap='inferno', origin='lower')
         axs[i//2, i%2].set_title(f"mic{i}")
         fig.colorbar(img, ax=axs[i//2, i%2], format='%+2.0f dB')
+
 
 
     plt.show()
@@ -396,13 +406,15 @@ def grid_plot_spectrogram(data_list, fs):
     for i in range(mic_number):
         # convert to spectrogram
         if i < 3:
-            img = get_spectrogram(data_list[i], fs)
+            S_db, ax = get_spectrogram(data_list[i], fs)
+            img = axs[i, 0].imshow(S_db, aspect='auto', cmap='inferno', origin='lower')
             axs[i, 0].set_title(f"mic{i}")
             fig.colorbar(img, ax=axs[i, 0], format='%+2.0f dB')
             if i == 2:
                 axs[i, 0].set_xlabel('Time [s]')
         else:
-            img = get_spectrogram(data_list[i], fs)
+            S_db, ax = get_spectrogram(data_list[i], fs)
+            img = axs[i-3, 1].imshow(S_db, aspect='auto', cmap='inferno', origin='lower')
             axs[i-3, 1].set_title(f"mic{i}")
             fig.colorbar(img, ax=axs[i-3, 1], format='%+2.0f dB')
             if i == 5:
@@ -561,11 +573,31 @@ def load_background_noise(cfg):
             #extend wav length by wrapping around twice
             wav = torch.cat([wav, wav], dim=1)
 
-            background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
+            # background_wavs.append(wav.squeeze(0)) # remove the dimension of size 1
         
         return background_wavs
 
+def load_background_noise_multiChannel(cfg):
+        """
+        Load the data from a single trial to subtract from the dataset (when using multichannel signal from UMC DAQ)
+        return a list of background noise for all mics, dim [num_mics]
+        """
         
+        num_mics = cfg.num_channel
+
+        background_wavs = []
+        path_name = cfg.background_dir
+
+        wav_filename = f"{path_name}/mic{cfg.device_list[0]}.wav"
+        wav, sample_rate = torchaudio.load(wav_filename)
+        
+        #convert torch tensor into list tensor([6,88200]) --> [88200, ..., 88200] 
+        for i in range(num_mics):
+            background_wavs.append(wav[i][:])
+        
+        
+        return background_wavs
+
 def subtract_background_noise(y_single_waveform, noise_single_waveform, sample_rate):
     """
     in: array of single waveform of y and noise
@@ -577,9 +609,9 @@ def subtract_background_noise(y_single_waveform, noise_single_waveform, sample_r
 
     # print(f"dimensions of all 3 wavs: {input_wav.size()}, {background.size()}, {wavs[i].size()}")
     # Apply noise reduction
-    y_single_waveform = nr.reduce_noise(y=y_single_waveform, sr=sample_rate, y_noise=background, stationary=True, n_std_thresh_stationary = 4.5)
+    y_single_waveform = nr.reduce_noise(y=y_single_waveform, sr=sample_rate, y_noise=background, stationary=True, n_std_thresh_stationary = 2.5)
     #convert to tensor
-    # y_single_waveform = torch.tensor(y_single_waveform, dtype=torch.float32)
+    y_single_waveform = torch.tensor(y_single_waveform, dtype=torch.float32)
     return y_single_waveform
 
 
@@ -707,12 +739,25 @@ def concat_wav_files_dataset(load_path, trial_count,mic_id):
     for trial_number in range(trial_count):
 
         file_name = f"{load_path}trial{trial_number}/mic{mic_id}.wav"
-        data, fs = librosa.load(file_name)
+        data, fs = librosa.load(file_name, sr=44100, mono=False)
         concat_data.append(data)
         
-        
-    #convert len of 10 list to 1D array
-    concat_data = np.concatenate(concat_data, axis=0)
+    # print(f"concat_data shape: {len(concat_data)}") #--> 50 trials
+    # print(f"concat_data[0] shape: {concat_data[0].shape}") #--> (6, 88320)
+    
+    #find the minimum length of all trials and then trim all trials to the minimum length
+    min_length = min(len(single_trial_data[1]) for single_trial_data in concat_data)
+    # print(f"min_length: {min_length}")
+
+    for i in range(trial_count):
+        concat_data[i] = concat_data[i][:, :min_length]
+
+    # print(f"concat_data[0] shape: {concat_data[0].shape}") #--> (6, min_length)
+
+    #convert (N_trial, 6, min_length) to (6, N_trial*min_length)
+    concat_data = np.concatenate(concat_data, axis=1)
+    # print(f"concat_data shape: {concat_data.shape}") #--> (6, 50*min_length)
+    
     return concat_data
 
 def concat_wav_files(load_path, trial_count,mic_id):
@@ -761,6 +806,33 @@ def amplitude_envelope(signal, frame_size=1024, hop_length=512):
     #print size of signal and output
     # print(f"size of signal: {len(signal)}, size of output: {len(output)}")
     return output
+
+def trim_audio_around_peak(data_list, fs, sample_duration):
+    """
+    Finds the peak of the audio signal and trims the signal around the peak.
+
+    Args:
+        data_list (list): The input list of audio signals.
+
+    Returns:
+        list: The list of trimmed audio signals.
+    """
+
+    # Create a list to store the trimmed audio signals
+    trimmed_data = []
+
+    
+    peak_index = np.argmax(data_list[0])
+
+
+    start_index = peak_index - int(sample_duration * fs)//2
+    end_index = peak_index + int(sample_duration * fs)//2
+
+    # Trim the audio signals wiht new start and end indices
+    for data in data_list:
+        trimmed_data.append(data[start_index:end_index])
+
+    return trimmed_data
 
 
 def trim_audio_signal(audio_signals, fs=44100, start_time=0.25, end_clip_time=0.25):

@@ -84,7 +84,7 @@ class FrankaMotion:
     def rotate_j7(self, j7_radian):
         joints = self.franka.get_joints()
         joints[6] = j7_radian
-        self.franka.goto_joints(joints, duration=8, ignore_virtual_walls=True)
+        self.franka.goto_joints(joints, duration=10, ignore_virtual_walls=True)
 
     def get_joints(self):
         return self.franka.get_joints()

@@ -28,11 +28,11 @@ from logger import Logger
 from datasets import AudioDataset
 
 #models
-from models.KNN import KNN
+# from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D
 
 #eval
-from sklearn.metrics import mean_squared_error, root_mean_squared_error
+from sklearn.metrics import mean_squared_error
 import eval_utils as eval_utils
 
 torch.manual_seed(42)
@@ -42,8 +42,23 @@ def load_data(cfg):
     #load data
     dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augment = False)
 
+    #visuaize dataset
+    if cfg.visuaize_dataset:
+        for i in range(5):
+            
+            #get first element of dataset
+            x, y = dataset[i]
+            #convert to numpy
+            x = x.numpy()
+            #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
+            x = [x[i] for i in range(x.shape[0])]
+            # print(f"size of x: {len(x)}")
+            print(f"i: {i} and y: {y}")
+            # plot mel spectrogram
+            mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
+
     # split the dataset into train and validation 80/20
-    train_size = int(0.8 * len(dataset))
+    train_size = int(0.1 * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
@@ -67,15 +82,17 @@ def load_data(cfg):
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D')
 def main(cfg: DictConfig):
     print(f" --------- eval --------- ")
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"device: {device}")
 
 
     #load model.pth from checkpoint
     model = CNNRegressor2D(cfg)
     model.load_state_dict(torch.load(os.path.join(cfg.model_directory, 'model.pth')))
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     #verify if model is loaded by checking the model parameters
     print(model)
+
 
     #load data
     train_loader, val_loader = load_data(cfg)
@@ -96,15 +113,15 @@ def main(cfg: DictConfig):
         # plot_spectrogram(cfg, x[0], 44100)
         # sys.exit()
 
-        x_val, Y_val = x,y
+        x_input, Y_val = x,y
 
         with torch.no_grad():
-            Y_pred = model(x_val) 
+            Y_output = model(x_input) 
 
             #split prediction to height and radian
-            height_pred = Y_pred[:,0]
-            x_pred = Y_pred[:,1]
-            y_pred = Y_pred[:,2]
+            height_pred = Y_output[:,0]
+            x_pred = Y_output[:,1]
+            y_pred = Y_output[:,2]
             # radian_pred = torch.atan2(y_pred, x_pred)
 
             #convert y_val to radian
