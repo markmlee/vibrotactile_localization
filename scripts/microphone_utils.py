@@ -193,7 +193,45 @@ def plot_spectrogram_with_cfg(cfg, data, fs):
                 axs[i-3, 1].set_xlabel('Time [s]')
         
     plt.show()
+
+
     
+def save_spectrogram_with_cfg(cfg, data, fs, name):
+    """
+    subplot 3x2 grid of time domain plots. 
+    First column of 3 plots should be mic0,1,2
+    Second column of 3 plots should be mic3,4,5
+    """
+
+
+    # Plot the spectrogram for all 6 mics
+    fig, axs = plt.subplots(3, 2, figsize=(15, 10))
+    fig.suptitle('Mel-Spectrogram for all 6 mics')
+
+    for i,S in enumerate((data)):
+        if i < 3:
+            axs[i, 0].set_title(f"mic{i}")
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, ax=axs[i, 0], vmin=-80, vmax=0, 
+                                           hop_length=cfg.hop_length, n_fft=cfg.n_fft)
+            fig.colorbar(img, ax=axs[i, 0], format='%+2.0f dB')
+
+            
+            if i == 2:
+                axs[i, 0].set_xlabel('Time [s]')
+        else:
+            axs[i-3, 1].set_title(f"mic{i}")
+            S_dB = librosa.power_to_db(S, ref=np.max)
+            img = librosa.display.specshow(S_dB,x_axis='time', y_axis='mel', sr=fs, ax=axs[i-3, 1], vmin=-80, vmax=0, 
+                                           hop_length=cfg.hop_length, n_fft=cfg.n_fft)
+            fig.colorbar(img, ax=axs[i-3, 1], format='%+2.0f dB')
+
+            if i == 5:
+                axs[i-3, 1].set_xlabel('Time [s]')
+
+    #save the plot into image with name
+    plt.savefig(f"{cfg.checkpoint_dir}/latentdim{name}.png")
+
 
 
 
@@ -224,6 +262,30 @@ def plot_fft(waves, sample_rate, device_list):
                 ax.set_xlabel('Frequency (Hz)', color='black')
                 ax.set_ylabel('Magnitude', color='black')
                 ax.tick_params(colors='black')
+            else:
+                ax.set_visible(False)
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.show()
+
+        #plot FFT waves again but limit xrange to 0-10,000 Hz
+        fig, axs = plt.subplots(6, 1, figsize=(10, 15))
+        fig.suptitle('Frequency Components of Background Noise (0-10,000 Hz)')
+
+
+        for i, ax in enumerate(axs):
+            if i < len(waves):
+                # Calculate magnitude of FFT and frequency bins
+                magnitude = torch.abs(background_fft[i])
+                frequency = torch.fft.rfftfreq(waves[i].shape[0], d=1/sample_rate)
+                
+                # Plotting with black line color
+                ax.plot(frequency.numpy(), magnitude.numpy(), color='black')
+                ax.set_title(f'Mic {device_list[i]}', color='black')
+                ax.set_xlabel('Frequency (Hz)', color='black')
+                ax.set_ylabel('Magnitude', color='black')
+                ax.tick_params(colors='black')
+                ax.set_xlim(0, 1000)
             else:
                 ax.set_visible(False)
 
@@ -352,7 +414,8 @@ def get_spectrogram(data,fs):
     data = data.numpy()
 
     S = librosa.stft(data)
-    S_db = librosa.amplitude_to_db(np.abs(S), ref=np.max)
+    # S_db = librosa.amplitude_to_db(np.abs(S), ref=np.max)
+    S_db = librosa.power_to_db(S, ref=np.max)
     ax = librosa.display.specshow(S_db, sr=fs, x_axis='time', y_axis='log', vmin=-80, vmax=0)
 
     return S_db, ax
@@ -405,22 +468,29 @@ def grid_plot_spectrogram(data_list, fs):
     for i in range(mic_number):
         # convert to spectrogram
         if i < 3:
-            S_db, ax = get_spectrogram(data_list[i], fs)
-            img = axs[i, 0].imshow(S_db, aspect='auto', cmap='inferno', origin='lower')
             axs[i, 0].set_title(f"mic{i}")
+            S_dB, ax = get_spectrogram(data_list[i], fs)
+            img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, ax=axs[i, 0], vmin=-80, vmax=0, 
+                                           hop_length=64, n_fft=512)
             fig.colorbar(img, ax=axs[i, 0], format='%+2.0f dB')
+
             if i == 2:
                 axs[i, 0].set_xlabel('Time [s]')
         else:
-            S_db, ax = get_spectrogram(data_list[i], fs)
-            img = axs[i-3, 1].imshow(S_db, aspect='auto', cmap='inferno', origin='lower')
             axs[i-3, 1].set_title(f"mic{i}")
+            S_dB, ax = get_spectrogram(data_list[i], fs)
+            img = librosa.display.specshow(S_dB, x_axis='time', y_axis='mel', sr=fs, ax=axs[i-3, 1], vmin=-80, vmax=0, 
+                                           hop_length=64, n_fft=512)
             fig.colorbar(img, ax=axs[i-3, 1], format='%+2.0f dB')
+
             if i == 5:
                 axs[i-3, 1].set_xlabel('Time [s]')
 
         
     plt.show()
+
+   
+   
 
 def plot_spectrogram_of_all_data(cfg, data, fs):
     """
@@ -567,7 +637,7 @@ def load_wav_files_as_dataset(devicelist, trial_count, load_path):
         for mic in devicelist:
 
             file_name = f"{load_path}trial{trial}/mic{mic}.wav"
-            data, fs = librosa.load(file_name, sr=44100)
+            data, fs = librosa.load(file_name, sr=44100, mono=False)
             mic_data_single_trial.append(data)
 
         mic_data_over_trials.append(mic_data_single_trial)
@@ -821,6 +891,9 @@ def concat_wav_files_dataset_sections(load_path, trial_start, trial_end,mic_id):
 
     # print(f"concat_data[0] shape: {concat_data[0].shape}") #--> (6, min_length)
         
+    #clip concat_data to the first half to prevent bad signal from the second half
+    for i in range(trial_count):
+        concat_data[i] = concat_data[i][:, :min_length//2]
 
     #include the max amplitude of each mic in the dataset --> (N_trial, 6)
     mic_max_data = []
@@ -829,6 +902,10 @@ def concat_wav_files_dataset_sections(load_path, trial_start, trial_end,mic_id):
         max_for_all_mic = np.max(np.abs(concat_data[i]), axis=1)
         max_index_for_all_mic = np.argmax(np.abs(concat_data[i]), axis=1)
         # print(f"shape of max_for_all_mic: {max_for_all_mic.shape}") #--> (6,
+        # print(f"max_index_for_all_mic {max_index_for_all_mic}")
+
+        #plot time domain 
+        # plot_time_domain(concat_data[i], 44100)
         mic_max_data.append(max_for_all_mic)
         mic_max_index_data.append(max_index_for_all_mic)
 
@@ -911,15 +988,27 @@ def trim_audio_around_peak(data_list, fs, sample_window=44100):
     # print(f"peak_index: {peak_index}")
 
     start_index = peak_index - int(sample_window)//2
-    end_index = peak_index + int(sample_window)//2
+    start_index = max(0, start_index)
+    # end_index = peak_index + int(sample_window)//2
+    end_index = start_index + sample_window
 
     # Trim the audio signals wiht new start and end indices
     for data in data_list:
         trimmed_data.append(data[start_index:end_index])
 
+        # print(f"start index {start_index}, end index {end_index}")
+
+        if len(data[start_index:end_index])==0:
+            #plot data
+            plot_time_domain(data_list, fs)
+            print(f"size is 0")
+            sys.exit()
+        
+
     # if trimmed data size is not equal to sample_window, then pad with zeros
     for i in range(len(trimmed_data)):
         if len(trimmed_data[i]) < sample_window:
+            print(f"len of trimmed_data: {len(trimmed_data[i])}, sample_window: {sample_window}")
             print(f" ************ padding with zeros ************ ")
             # Calculate the number of zeros needed
             pad_size = sample_window - len(trimmed_data[i])

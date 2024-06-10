@@ -162,25 +162,36 @@ class AudioDataset(Dataset):
             #trim the background noise length to match the wav length
             trimmed_background_wavs = mic_utils.trim_audio_around_peak(self.background_wavs, self.sample_rate, self.cfg.window_frame)
 
+        dummy_visualization_before_background = []
         for i in range(self.num_mic ):
             if self.cfg.subtract_background: 
+                dummy_visualization_before_background.append(trimmed_wavs[i])
                 trimmed_wavs[i] = mic_utils.subtract_background_noise(trimmed_wavs[i], trimmed_background_wavs[i], self.sample_rate)
+                
                 # print(f"dim of wav after noise reduction: {wavs[i].size()}")
 
             #apply transform to wav file
             if self.transform:
+                # print(f"input shape of wav transform: {trimmed_wavs[i].size()}")
                 mel = self.transform(self.cfg, trimmed_wavs[i].float())
+                # print(f"output shape of mel transform: {mel.size()}") #--> output shape of transform: torch.Size([16, 690])
                 melspecs.append(mel.squeeze(0)) # remove the dimension of size 1
 
 
         if cfg.visualize_subtract_background:
-            # mic_utils.plot_fft(self.background_wavs, cfg.sample_rate, [1,2,3,4,5,6])
-            # mic_utils.plot_fft(wavs, sample_rate, [1,2,3,4,5,6])
-            # mic_utils.plot_fft(trimmed_wavs, sample_rate, [1,2,3,4,5,6])
+            mic_utils.plot_fft(self.background_wavs, cfg.sample_rate, [1,2,3,4,5,6])
+            mic_utils.plot_fft(wavs, sample_rate, [1,2,3,4,5,6])
+            mic_utils.plot_fft(trimmed_wavs, sample_rate, [1,2,3,4,5,6])
 
-            mic_utils.grid_plot_spectrogram(self.background_wavs, cfg.sample_rate)
-            mic_utils.grid_plot_spectrogram(wavs, cfg.sample_rate)
+
+            # mic_utils.plot_spectrogram_with_cfg(cfg, self.background_wavs, cfg.sample_rate)
+            # mic_utils.plot_spectrogram_with_cfg(cfg, wavs, cfg.sample_rate)
+            # mic_utils.plot_spectrogram_with_cfg(cfg, trimmed_wavs, cfg.sample_rate)
+
+            mic_utils.grid_plot_spectrogram(trimmed_background_wavs, cfg.sample_rate)
+            mic_utils.grid_plot_spectrogram(dummy_visualization_before_background, cfg.sample_rate)
             mic_utils.grid_plot_spectrogram(trimmed_wavs, cfg.sample_rate)
+            
             
             sys.exit()
             
@@ -260,16 +271,25 @@ class AudioDataset(Dataset):
         x,y = self.X_mic_data[idx], self.Y_label_data[idx] # --> x: full 2 sec wav/spectrogram
         # print(f"index of x: {idx}, y: {y}")
 
-        #default starting bin is center of spectrogram
-        starting_bin = 0
+        # print(f"shape of x: {x.size()}") #--> shape of x: torch.Size([6, 16, 690]
+        
+        num_freq_bins = x.shape[2] #345
+        desired_bin_length = self.cfg.input_spectrogram_bins #0.2 second for given NFFT and hoplength
 
+        start = num_freq_bins//2 - desired_bin_length // 2
+        end = start + desired_bin_length
 
         if self.augment:
 
             if self.cfg.augment_timeshift:
-                #crop spectrogram to 1 sec (bin size of 345) from a random starting point
-                starting_bin = random.randint(150,220) #--> 0 to 345
-            x = x[:, :, starting_bin:starting_bin + 345] #--> [num_mics, num_mels, 345] 
+                #randomly shift the starting bin (plus or minus) by 10% of the desired bin length
+                shift = random.randint(-desired_bin_length//10, desired_bin_length//10)
+                start = start + shift
+                start = max(0, start) #ensure start is not negative
+                end = start + desired_bin_length
+
+                # print(f"start: {start}, end: {end}, size of x: {x.size()}")
+            x = x[:, :, start:end] #--> [num_mics, num_mels, 276] 
 
             if self.cfg.affine_transform:
                 #apply affine transformation
@@ -288,14 +308,16 @@ class AudioDataset(Dataset):
                 x = freq_masking(x)
 
         else: #no augmentation
-            #center crop the spectrogram around starting bin (bin size of 345). 
-            # Should be 175/2 on the left and 175/2 on the right
-            start = (x.shape[2] - 345) // 2
-            end = start + 345
+            #input size of 690. 
+            #center crop the spectrogram around starting bin (so uses 138 bins before and after)
+
+            start = num_freq_bins//2 - desired_bin_length // 2
+            end = start + desired_bin_length
+
             x = x[:, :, start:end]
 
         
-
+        # print(f"size of x after augmentation: {x.size()}") #--> size of x after augmentation: torch.Size([6, 16, 276])
         return x,y 
 
 

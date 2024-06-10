@@ -1,6 +1,6 @@
 # ----- wandb log parameters -----
-log_wandb: False
-wandb_run_name: "UMC_centered_NO_time,sub"
+log_wandb: True
+wandb_run_name: "OriginalUMC_02sec_everything"
 wandb_project: "audio_localization6"
 
 
@@ -11,23 +11,25 @@ transform: mel
 device_list: [2]
 num_channel: 6
 max_num_frames: 88200 #2 sec duration during data collection
-window_frame: 44100
 
+window_frame: 44100 #[44100 for 1 sec for input_spectrogram_bins = 138], [66150 for 1.5 sec for input_spectrogram_bins = 345] 
+CNN_layer_size: 1536 #[torch.nn.Linear(1536,512) for 0.2 second input],[#torch.nn.Linear(4864,512) for 1.0 second input]
 sample_rate: 44100
 n_fft: 512
-hop_length: 128
+hop_length: 64
+input_spectrogram_bins: 138 #[138 for 0.2s duration for NFFT512, HOP 64], [345 for 1s duration for NFFT512, HOP 128]
 n_mels: 50
 resample_rate: 11025
 
 # ----- preprocessing parameters -----
-subtract_background: False # ***** key parameter *****
+subtract_background: True # ***** key parameter *****
 normalize_audio_data: True # ***** key parameter *****
 
 
 # ----- augmentation param -----
 augment_data: True #for general _getitem_ modification enable/disable
-augment_timeshift: False # ***** key parameter ***** (upon init dataset)
-affine_transform: False
+augment_timeshift: True # ***** key parameter ***** (upon init dataset)
+affine_transform: True
 augment_timemask: True #upon getitem in dataloader
 augment_freqmask: True #upon getitem in dataloader
 

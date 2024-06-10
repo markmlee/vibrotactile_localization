@@ -258,6 +258,7 @@ def train_CNN(cfg,device, wandb, logger):
             
             optimizer.zero_grad()
 
+            # print(f"x shape in train: {x.shape}")
             train_loss = model_prediction(cfg, device, model, x, y, criterion_list, weight_list)
             train_loss.backward()
             optimizer.step()

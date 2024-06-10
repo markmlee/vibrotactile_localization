@@ -1,0 +1,58 @@
+# ----- wandb log parameters -----
+log_wandb: True
+wandb_run_name: "AE_fulldata_normal,aug,subtr"
+wandb_project: "audio_localization7"
+
+
+data_dir: /home/mark/audio_learning_project/data/franka_2D_localization_full #franka_2D_localization_full/ #franka_2D_localization/ #franka_2D_1line
+background_dir: /home/mark/audio_learning_project/data/franka_constant/trial0/
+transform: mel
+
+device_list: [2,10,11,12,13,14] #[2,10,11,12,13,14]
+max_num_frames: 88200 #2 sec duration during data collection
+window_frame: 44100
+
+sample_rate: 44100
+n_fft: 512
+hop_length: 128
+n_mels: 50
+resample_rate: 11025
+
+latent_dim: 2
+
+# ----- preprocessing parameters -----
+subtract_background: False # ***** key parameter *****
+
+# ----- visualization parameters -----
+inspect_data_label: False # to iteratively visualize the audio & GT label in 3D plot 
+visuaize_dataset: False # to visualize the dataloader 
+visuaize_regression: True # for evaluation, to visualize the regression output 
+
+# ----- training parameters -----
+
+model_path: /home/mark/audio_learning_project/models
+normalize_audio_data: True # ***** key parameter *****
+checkpoint_dir: ??? #to be filled in by hydra
+
+batch_size: 16
+val_batch_size: 16
+
+# ----- output representation parameters -----
+output_representation: 'xy' #'height_radianclass' #'height' #'xy' #'radian' 
+output_representation_normalize: False #for ablation study, to normalize the output representation
+
+
+# ----- augmentation param -----
+augment_data: True #for general _getitem_ modification enable/disable
+augment_timeshift: True # ***** key parameter ***** (upon init dataset)
+affine_transform: True
+augment_timemask: False #upon getitem in dataloader
+augment_freqmask: False #upon getitem in dataloader
+
+# ----- training hypertuning parameters -----
+train_epochs: 400 #400
+log_frequency: 1
+eval_frequency: 1
+
+# -------- debugging --------
+save_meanvar_output: False

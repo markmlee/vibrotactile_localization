@@ -113,7 +113,7 @@ class CNNRegressor2D(nn.Module):
 
 
         self.fc_stack = torch.nn.Sequential(
-            torch.nn.Linear(4864,512),
+            torch.nn.Linear(cfg.CNN_layer_size,512), #[torch.nn.Linear(4864,512) for 1.0 second input],[#torch.nn.Linear(1536,512) for 0.2 second input]
             torch.nn.ReLU(),
             torch.nn.Linear(512,256),
             torch.nn.ReLU(),
