@@ -7,8 +7,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import sys
+import os
 import seaborn as sns 
 import pandas as pd
+
+import torch
+import torchaudio
+from torch.utils.data import Dataset
+
+import microphone_utils as mic_utils
+
 
 
 def load_data_and_plot():
@@ -16,9 +24,9 @@ def load_data_and_plot():
     number_of_mics = len(devicelist)
     fs = 44100
     channels_in = 1
-    save_path_data = "/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC/"
+    save_path_data = "/home/mark/audio_learning_project/data/test_generalization/stick_location/"
 
-    total_trial_count = 100
+    total_trial_count = 5
 
 
     # -----------------------------------------------------------
@@ -508,8 +516,8 @@ def load_data_and_plot_for_removing_noncollision():
     Iterate through and find, if any, samples where abs amplitude is smaller than 2 std deviation across all mic channels
     plot them to identify non-collision files
     """
-    save_path_data = "/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC/"
-    total_trial_count = 3750 #50 distance x 15 radian intervals x 5 repeat counts = 3750 trials
+    save_path_data = "/home/mark/audio_learning_project/data/franka_UMC_fixed/"
+    total_trial_count = 480 #50 distance x 15 radian intervals x 5 repeat counts = 3750 trials
     devicelist=[2]
     number_of_mics = 6
     fs = 44100
@@ -560,8 +568,8 @@ def main():
     # sys.exit()
 
     # ----------------- For simple time domain plotting checkcing data ------------------------------------------
-    # load_data_and_plot()
-    # sys.exit()
+    load_data_and_plot()
+    sys.exit()
     # -----------------------------------------------------------
 
     # ----------------- For visualizing effect of amplitude  ------------------------------------------

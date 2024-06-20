@@ -26,7 +26,6 @@ import microphone_utils as mic_utils
 
 """
 Define AudioDataset class to load and process audio data
-referenced from: https://github.com/abitha-thankaraj/audio-robot-learning
 """
 
 torch.manual_seed(42)
@@ -53,18 +52,32 @@ class AudioDataset(Dataset):
             self.transform = TRANSFORMS[transform]
 
         #get all directory path to trials
-        self.dir = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
+        dir_raw = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
 
         #filter out directory that does not start with 'trial'
-        self.dir = [d for d in self.dir if d.split('/')[-1].startswith('trial')]
+        dir_raw = [d for d in dir_raw if d.split('/')[-1].startswith('trial')]
+        len_data = len(dir_raw)
+
+        count = 0
+        data_dir = f"{data_dir}trial"
+        self.dir = []
+        while len(self.dir) < len_data:
+            file_name = f"{data_dir}{count}"
+
+            if file_name in dir_raw:
+                self.dir.append(file_name)
+            count += 1
         
         #load data (for multiple mics in device list, get wav files)
         len_data = len(self.dir)
         
+
+
         self.num_mic = cfg.num_channel
 
         self.X_mic_data = []
         self.Y_label_data = []
+        self.wav_data_list = []
 
         #load background noise
         print(f" --------- loading background noise ---------")
@@ -74,12 +87,13 @@ class AudioDataset(Dataset):
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
             print(f"loading trial: {trial_n}")
-            x_data, y_label = self.load_xy_single_trial(self.cfg, trial_n)
+            x_data, y_label, wav_data = self.load_xy_single_trial(self.cfg, trial_n)
 
             # print(f"size of x_data: {x_data.size()}")
 
             self.X_mic_data.append(x_data)
             self.Y_label_data.append(y_label)
+            self.wav_data_list.append(wav_data)
 
         print(f"size of X_mic_data: {len(self.X_mic_data)}") #--> 100 trials
         self.X_mic_data = torch.stack(self.X_mic_data)  # Shape: [len_data, num_mics, num_mels, num_bins_time]
@@ -98,13 +112,18 @@ class AudioDataset(Dataset):
                     meanvar = torch.cat((mean, var), dim=0)
                     #save to npy file
                     np.save(f"{cfg.data_dir}/meanvar.npy", meanvar.cpu().numpy())
-                    sys.exit()
                     
+                    
+                if cfg.load_meanvar_output:
+                    #load mean and var from npy file
+                    meanvar = np.load(f"{cfg.data_dir}/meanvar.npy")
+                    mean = torch.tensor(meanvar[0])
+                    var = torch.tensor(meanvar[1])
+                    # print(f"Loaded mean: {mean}, var: , {var}")
 
-
-                # Normalize the X_mic_data
                 for i in range(len_data):
                     self.X_mic_data[i] = (self.X_mic_data[i] - mean) / torch.sqrt(var)
+                    # self.X_mic_data[i] = (self.X_mic_data[i] - mean) / np.sqrt(var)
 
                 #confirm if data is normalized
                 # print(f"dataset mean: {self.X_mic_data.mean()}, dataset std: {self.X_mic_data.std()}")
@@ -174,7 +193,7 @@ class AudioDataset(Dataset):
             if self.transform:
                 # print(f"input shape of wav transform: {trimmed_wavs[i].size()}")
                 mel = self.transform(self.cfg, trimmed_wavs[i].float())
-                # print(f"output shape of mel transform: {mel.size()}") #--> output shape of transform: torch.Size([16, 690])
+                # print(f"trial number: {trial_n} output shape of mel transform: {mel.size()}") #--> output shape of transform: torch.Size([16, 690])
                 melspecs.append(mel.squeeze(0)) # remove the dimension of size 1
 
 
@@ -197,7 +216,7 @@ class AudioDataset(Dataset):
             
                 
         # stack wav files into a tensor of shape (num_mics, num_samples)
-        wav_tensor = torch.stack(wavs, dim=0)
+        wav_tensor = torch.stack(trimmed_wavs, dim=0)
         # print(f"dimension of wav tensor: {wav.size()}") #--> dimension of wav tensor: torch.Size([6, 88200])
 
         #stack mel spectrograms into a tensor of shape (num_mics, num_mels, num_samples)
@@ -262,13 +281,14 @@ class AudioDataset(Dataset):
         # #convert to tensor
         # label = torch.tensor(label, dtype=torch.float32)
 
-        return data, label
+        return data, label, wav_tensor
     
     def __len__(self):
         return len(self.dir)
     
     def __getitem__(self, idx):
         x,y = self.X_mic_data[idx], self.Y_label_data[idx] # --> x: full 2 sec wav/spectrogram
+        wav = self.wav_data_list[idx]
         # print(f"index of x: {idx}, y: {y}")
 
         # print(f"shape of x: {x.size()}") #--> shape of x: torch.Size([6, 16, 690]
@@ -318,7 +338,7 @@ class AudioDataset(Dataset):
 
         
         # print(f"size of x after augmentation: {x.size()}") #--> size of x after augmentation: torch.Size([6, 16, 276])
-        return x,y 
+        return x,y, wav 
 
 
 
