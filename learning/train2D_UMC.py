@@ -65,7 +65,7 @@ def train_KNN(cfg):
 
     #train KNN & SVM by looping once through trainloader. 
     #MAKE SURE BATCHSIZE IS SET TO LENGTH(DATASET)
-    for i, (x, y) in enumerate(tqdm(train_loader)):
+    for i, (x, y,_) in enumerate(tqdm(train_loader)):
         x_train, y_train = x, y
 
     print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
@@ -98,7 +98,7 @@ def eval_KNN(cfg, model):
 
     #train KNN & SVM by looping once through trainloader. 
     #MAKE SURE BATCHSIZE IS SET TO LENGTH(DATASET)
-    for i, (x, y) in enumerate(tqdm(val_loader)):
+    for i, (x, y,_) in enumerate(tqdm(val_loader)):
         x_val, y_val = x, y
 
     print(f"shapes of x_train, y_train: {x_val.shape}, {y_val.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
@@ -249,7 +249,7 @@ def train_CNN(cfg,device, wandb, logger):
         model.train()
 
         #---------------------------- train ----------------------------
-        for _, (x, y) in enumerate(train_loader):
+        for _, (x, y, _) in enumerate(train_loader):
 
             if cfg.visuaize_dataset:
                 mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
@@ -275,7 +275,7 @@ def train_CNN(cfg,device, wandb, logger):
 
             model.eval()
             
-            for _, (x, y) in enumerate(tqdm(val_loader)):
+            for _, (x, y, _) in enumerate(tqdm(val_loader)):
                 with torch.no_grad():
 
                     val_loss = model_prediction(cfg,device, model, x, y, criterion_list, weight_list)
@@ -329,7 +329,7 @@ def eval_random_prediction(cfg, device):
     y_val_list = []
     y_pred_list = []
 
-    for _, (x, y) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _) in enumerate(tqdm(val_loader)):
 
         x_val, y_val = x.to(device), y.to(device)
 
@@ -383,7 +383,7 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
     pred_label_list = []
     true_label_list = []
 
-    for _, (x, y) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _) in enumerate(tqdm(val_loader)):
 
         x_val, y_val = x.to(device), y.to(device)
 

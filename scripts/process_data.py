@@ -516,8 +516,8 @@ def load_data_and_plot_for_removing_noncollision():
     Iterate through and find, if any, samples where abs amplitude is smaller than 2 std deviation across all mic channels
     plot them to identify non-collision files
     """
-    save_path_data = "/home/mark/audio_learning_project/data/franka_UMC_fixed/"
-    total_trial_count = 480 #50 distance x 15 radian intervals x 5 repeat counts = 3750 trials
+    save_path_data = "/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal/"
+    total_trial_count = 2400 #50 distance x 15 radian intervals x 5 repeat counts = 3750 trials
     devicelist=[2]
     number_of_mics = 6
     fs = 44100
@@ -550,26 +550,26 @@ def load_data_and_plot_for_removing_noncollision():
         max_amplitude = np.max(np.abs(all_mic_single_trial), axis=1) #--> 6 mics
 
         #TODO: check if any of the mic in this sample is smaller than 2 std deviation from the max_amplitude_mean
-        is_smaller = max_amplitude < (max_amplitude_mean - 2*max_amplitude_std)
+        is_smaller = max_amplitude < (max_amplitude_mean - 1.5*max_amplitude_std)
 
         #TODO: plot them to identify non-collision files
         if any(is_smaller):
             print(f"trial {trial} has non-collision")
             
             #plot
-            microphone_utils.plot_time_domain(mic_data_over_trials[trial][0], fs)
+            microphone_utils.grid_plot_time_domain(mic_data_over_trials[trial][0], fs)
 
 
 def main():
     print(f" ------ starting script ------  ")
 
     # ----------------- For iterating through all wav files and detecting no collision files ------------------------------------------
-    # load_data_and_plot_for_removing_noncollision()
-    # sys.exit()
+    load_data_and_plot_for_removing_noncollision()
+    sys.exit()
 
     # ----------------- For simple time domain plotting checkcing data ------------------------------------------
-    load_data_and_plot()
-    sys.exit()
+    # load_data_and_plot()
+    # sys.exit()
     # -----------------------------------------------------------
 
     # ----------------- For visualizing effect of amplitude  ------------------------------------------

@@ -1,11 +1,12 @@
-# ----- wandb log parameters -----
-log_wandb: True
-wandb_run_name: "wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined"
-wandb_project: "audio_localization7"
+#UPDATE PARAMS
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/wood_T22_L42_L80_Horizontal_combined
 
 
-data_dir: /home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined/ #franka_2D_localization/ #franka_2D_1line
+
+# ----- mic / data param -----
+data_dir: /home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_35/ #franka_2D_localization
 background_dir: /home/mark/audio_learning_project/data/franka_constant/background_noise/trial0/
+
 transform: mel
 
 device_list: [2]
@@ -20,46 +21,38 @@ hop_length: 128
 input_spectrogram_bins: 345 #[138 for 0.2s duration for NFFT512, HOP 64], [345 for 1s duration for NFFT512, HOP 128]
 n_mels: 50
 resample_rate: 11025
-load_meanvar_output: False
+
+
+batch_size: 25
+val_batch_size: 25
+
 
 # ----- preprocessing parameters -----
 subtract_background: True # ***** key parameter *****
 normalize_audio_data: True # ***** key parameter *****
 
+load_meanvar_output: True
 
 # ----- augmentation param -----
 augment_data: True #for general _getitem_ modification enable/disable
 augment_timeshift: True # ***** key parameter ***** (upon init dataset)
 affine_transform: True
-augment_timemask: True #upon getitem in dataloader
-augment_freqmask: True #upon getitem in dataloader
+augment_timemask: False #upon getitem in dataloader
+augment_freqmask: False #upon getitem in dataloader
 
 
-# ----- training parameters -----
-
-model_path: /home/mark/audio_learning_project/models
-checkpoint_dir: ??? #to be filled in by hydra
-
-batch_size: 128
-val_batch_size: 128
 
 # ----- output representation parameters -----
-output_representation: 'xy' #'height_radianclass' #'height' #'xy' #'radian' 
+
+output_representation:  'xy' #'height' #'xy' #'radian' 
 output_representation_normalize: False #for ablation study, to normalize the output representation
 
 
-# ----- training hypertuning parameters -----
-train_epochs: 200
-log_frequency: 1
-eval_frequency: 1
-
+# -------- debugging --------
+save_meanvar_output: False
 
 # ----- visualization parameters -----
 inspect_data_label: False # to iteratively visualize the audio & GT label in 3D plot 
 visualize_subtract_background: False
 visuaize_dataset: False # to visualize the dataloader
 visuaize_regression: True # for evaluation, to visualize the regression output 
-
-# -------- debugging --------
-
-save_meanvar_output: True

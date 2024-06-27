@@ -116,7 +116,7 @@ class AudioDataset(Dataset):
                     
                 if cfg.load_meanvar_output:
                     #load mean and var from npy file
-                    meanvar = np.load(f"{cfg.data_dir}/meanvar.npy")
+                    meanvar = np.load(f"{cfg.model_directory}/meanvar.npy")
                     mean = torch.tensor(meanvar[0])
                     var = torch.tensor(meanvar[1])
                     # print(f"Loaded mean: {mean}, var: , {var}")
@@ -198,7 +198,7 @@ class AudioDataset(Dataset):
 
 
         if cfg.visualize_subtract_background:
-            mic_utils.plot_fft(self.background_wavs, cfg.sample_rate, [1,2,3,4,5,6])
+            # mic_utils.plot_fft(self.background_wavs, cfg.sample_rate, [1,2,3,4,5,6])
             mic_utils.plot_fft(wavs, sample_rate, [1,2,3,4,5,6])
             mic_utils.plot_fft(trimmed_wavs, sample_rate, [1,2,3,4,5,6])
 
@@ -207,12 +207,12 @@ class AudioDataset(Dataset):
             # mic_utils.plot_spectrogram_with_cfg(cfg, wavs, cfg.sample_rate)
             # mic_utils.plot_spectrogram_with_cfg(cfg, trimmed_wavs, cfg.sample_rate)
 
-            mic_utils.grid_plot_spectrogram(trimmed_background_wavs, cfg.sample_rate)
-            mic_utils.grid_plot_spectrogram(dummy_visualization_before_background, cfg.sample_rate)
-            mic_utils.grid_plot_spectrogram(trimmed_wavs, cfg.sample_rate)
+            # mic_utils.grid_plot_spectrogram(trimmed_background_wavs, cfg.sample_rate)
+            # mic_utils.grid_plot_spectrogram(dummy_visualization_before_background, cfg.sample_rate)
+            # mic_utils.grid_plot_spectrogram(trimmed_wavs, cfg.sample_rate)
             
             
-            sys.exit()
+            # sys.exit()
             
                 
         # stack wav files into a tensor of shape (num_mics, num_samples)

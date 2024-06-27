@@ -192,7 +192,7 @@ def plot_spectrogram_with_cfg(cfg, data, fs):
             if i == 5:
                 axs[i-3, 1].set_xlabel('Time [s]')
         
-    plt.show()
+    # plt.show()
 
 
     
@@ -233,7 +233,69 @@ def save_spectrogram_with_cfg(cfg, data, fs, name):
     plt.savefig(f"{cfg.checkpoint_dir}/latentdim{name}.png")
 
 
+def plot_single_fft(waves, sample_rate, device_list):
+    """
+    Average the normalized FFT of 6 different mics to get 1 output FFT
+    """
+    num_mic = len(waves)
+    assert num_mic == 6, "The number of input wav tensors should be 6."
 
+    # Initialize sum of magnitudes
+    sum_magnitude = None
+
+    # Apply FFT to signal to determine the frequency content
+    for i in range(num_mic):
+        # Ensure the tensor is on the appropriate device
+        wave = waves[i]
+        
+        # Compute the FFT
+        fft = torch.fft.rfft(wave)
+        magnitude = torch.abs(fft)
+        
+        # Normalize the magnitude
+        magnitude /= magnitude.max()
+        
+        # Initialize sum_magnitude with the shape of the first magnitude tensor
+        if sum_magnitude is None:
+            sum_magnitude = torch.zeros_like(magnitude)
+        
+        # Sum the normalized magnitudes
+        sum_magnitude += magnitude
+
+    # Compute the average normalized magnitude
+    avg_magnitude = sum_magnitude / num_mic
+    
+    # Generate frequency axis
+    frequency = torch.fft.rfftfreq(waves[0].shape[0], d=1/sample_rate)
+
+    # Filter out frequencies below 100 Hz (motor noise) and above 1000 Hz (robot jerk noise) 
+    valid_indices = (frequency >= 100) & (frequency <= 1000)
+    filtered_frequencies = frequency[valid_indices]
+    filtered_magnitude = avg_magnitude[valid_indices]
+
+    # Find the frequency with the maximum amplitude
+    max_index = torch.argmax(filtered_magnitude)
+    max_frequency = filtered_frequencies[max_index].item()
+    max_amplitude = filtered_magnitude[max_index].item()
+
+    # Print the frequency with the maximum amplitude
+    print(f'Maximum amplitude at frequency: {max_frequency} Hz')
+
+    # Plot the average FFT
+    plt.figure(figsize=(10, 6))
+    plt.plot(frequency.cpu().numpy(), avg_magnitude.cpu().numpy())
+    
+    # Plot vertical red dashed line at the frequency with maximum amplitude
+    plt.axvline(x=max_frequency, color='r', linestyle='--', label=f'Max Frequency: {max_frequency} Hz')
+    
+    # Set x-axis limit to 1000 Hz
+    plt.xlim(0, 1000)
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('Normalized Amplitude')
+    plt.title('Average Frequency Components via Normalized FFT')
+    plt.legend()
+    plt.grid()
+    plt.show()
 
 def plot_fft(waves, sample_rate, device_list):
         """
@@ -258,7 +320,7 @@ def plot_fft(waves, sample_rate, device_list):
                 
                  # Plotting with black line color
                 ax.plot(frequency.numpy(), magnitude.numpy(), color='black')
-                ax.set_title(f'Mic {device_list[i]}', color='black')
+                # ax.set_title(f'Mic {device_list[i]}', color='black')
                 ax.set_xlabel('Frequency (Hz)', color='black')
                 ax.set_ylabel('Magnitude', color='black')
                 ax.tick_params(colors='black')
@@ -266,11 +328,11 @@ def plot_fft(waves, sample_rate, device_list):
                 ax.set_visible(False)
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.show()
+        # plt.show()
 
-        #plot FFT waves again but limit xrange to 0-10,000 Hz
+        #plot FFT waves again but limit xrange to 0-2,000 Hz
         fig, axs = plt.subplots(6, 1, figsize=(10, 15))
-        fig.suptitle('Frequency Components of Background Noise (0-10,000 Hz)')
+        fig.suptitle('Frequency Components of Background Noise (0-2,000 Hz)')
 
 
         for i, ax in enumerate(axs):
@@ -281,7 +343,7 @@ def plot_fft(waves, sample_rate, device_list):
                 
                 # Plotting with black line color
                 ax.plot(frequency.numpy(), magnitude.numpy(), color='black')
-                ax.set_title(f'Mic {device_list[i]}', color='black')
+                # ax.set_title(f'Mic {device_list[i]}', color='black')
                 ax.set_xlabel('Frequency (Hz)', color='black')
                 ax.set_ylabel('Magnitude', color='black')
                 ax.tick_params(colors='black')

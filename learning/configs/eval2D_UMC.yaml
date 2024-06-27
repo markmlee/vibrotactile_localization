@@ -1,10 +1,10 @@
 #UPDATE PARAMS
-model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/UMC_combined_fixed_angled
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined_model
 
 
 
 # ----- mic / data param -----
-data_dir: /home/mark/audio_learning_project/data/test_generalization/stick_Y_25/ #franka_2D_localization
+data_dir: /home/mark/audio_learning_project/data/test_generalization/stick_T50L42_Y_40/ #franka_2D_localization
 background_dir: /home/mark/audio_learning_project/data/franka_constant/background_noise/trial0/
 
 transform: mel
@@ -23,8 +23,8 @@ n_mels: 50
 resample_rate: 11025
 
 
-batch_size: 16
-val_batch_size: 16
+batch_size: 25
+val_batch_size: 25
 
 
 # ----- preprocessing parameters -----

@@ -4,11 +4,16 @@ import numpy as np
 import time
 
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC_ranged'
-dataset_directory = '/home/mark/audio_learning_project/data/franka_UMC_fixed'
-dataset_directory_angled = '/home/mark/audio_learning_project/data/franka_angled_UMC_full'
+# dataset_directory = '/home/mark/audio_learning_project/data/franka_UMC_fixed'
+# dataset_directory_angled = '/home/mark/audio_learning_project/data/franka_angled_UMC_full'
 
-# dataset_directory_fixed = '/home/mark/audio_learning_project/data/franka_UMC_fixed'
-# dataset_directory_half = '/home/mark/audio_learning_project/data/franka_UMC_combined_half'
+# dataset_directory1 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal'
+# dataset_directory2 = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
+# dataset_directory3 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
+# dataset_directory4 = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
+
+dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_T12_T22_T32_L42_T22_L80_Horizontal_combined'
+dataset_directory_new = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
 
 def get_trials_from_directory(directory):
     """
@@ -135,6 +140,10 @@ def combine_dataset(combine_dataset_directory_list, combined_dataset_name):
             
             #load trials
             trial_dir = f"{dataset_directory_n}/trial{trial_n}"
+
+            #every 100 trial, print out the trial dir for sanity check
+            if trial_n % 100 == 0:
+                print(f"trial_n {trial_n} trial_dir {trial_dir}")
             
             #copy directory to new combined dataset
             new_trial_dir = f"{combined_dataset_name}/trial{trial_index_count}"
@@ -160,15 +169,17 @@ def main():
     # ----------------------------- ONLY RUN ONCE WHEN COMBINING DATASETS -----------------------------
 
     #iterate through all dataset directories and then combine into a single one
-    # combine_dataset_directory_list = [dataset_directory_half, dataset_directory_fixed]
-    combine_dataset_directory_list = [dataset_directory, dataset_directory_angled]
+    combine_dataset_directory_list = [dataset_directory_combined, dataset_directory_new]
+    # combine_dataset_directory_list = [dataset_directory1, dataset_directory2, dataset_directory3, dataset_directory4]
 
-    combined_dataset_name = '/home/mark/audio_learning_project/data/franka_UMC_combined_fixed_angled'
+    combined_dataset_name = '/home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined'
 
     #make the combined dataset directory
     os.system(f"mkdir -p {combined_dataset_name}")
     
     combine_dataset(combine_dataset_directory_list, combined_dataset_name)
+
+    sys.exit()
     # --------------------------------------------------------------------------------------------------------------------
     
     

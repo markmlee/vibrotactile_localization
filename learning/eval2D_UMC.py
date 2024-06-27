@@ -44,7 +44,7 @@ def load_data(cfg):
 
     #visuaize dataset
     if cfg.visuaize_dataset:
-        for i in range(5):
+        for i in range(1):
             
             #get first element of dataset
             x, y, wav = dataset[i]
@@ -161,8 +161,17 @@ def main(cfg: DictConfig):
 
             #split prediction to height and radian
             height_pred = Y_output[:,0]
+
+            #clip height to [-11, +11]
+            height_pred = torch.clamp(height_pred, -11, 11)
+
             x_pred = Y_output[:,1]
             y_pred = Y_output[:,2]
+
+            #clip x and y to [-1, +1]
+            x_pred = torch.clamp(x_pred, -1, 1)
+            y_pred = torch.clamp(y_pred, -1, 1)
+
             # radian_pred = torch.atan2(y_pred, x_pred)
 
             #convert y_val to radian
@@ -189,6 +198,7 @@ def main(cfg: DictConfig):
 
             print(f"height pred: {height_pred}, height GT: {Y_val[:,0]}")
             print(f"rad pred: {radian_pred}, rad GT: {radian_val}")
+            print(f"x pred: {x_pred}, x GT: {x_val}, y pred: {y_pred}, y GT: {y_val}")
             print(f"height diff: {height_diff}, degree_diff: {degree_diff}")
 
         
