@@ -39,7 +39,7 @@ class FrankaMotion:
 
         #set goal pose to be [T: 0.475, 0.05, 0.7], [R: 0,0.707,0,0.707] 
         init_record_pose = RigidTransform(
-            translation=np.array([0.10, 0.35, 0.45]), #0.05 offset added for safety when restoring this init position
+            translation=np.array([0.12, 0.35, 0.57]), #0.05 offset added for safety when restoring this init position
             rotation= RigidTransform.rotation_from_quaternion([0,0.707,707,0]),
             from_frame='franka_tool', to_frame='world')
 
@@ -56,7 +56,7 @@ class FrankaMotion:
         #move j1
         joints = self.franka.get_joints()
         joints[0] += np.deg2rad(goal_j1_angle)
-        self.franka.goto_joints(joints, duration=duration, use_impedance=False, ignore_virtual_walls=True, block=False, joint_impedances = [1000, 4000, 4000, 4000, 4000, 4000, 4000])
+        self.franka.goto_joints(joints, duration=duration, use_impedance=False, ignore_virtual_walls=True, block=False, joint_impedances = [1000, 1000, 1000, 4000, 1000, 1000, 4000])
 
     def move_away_from_stick_joint(self, duration):
         #move j1
@@ -70,7 +70,7 @@ class FrankaMotion:
         current_pose.translation += np.array([0, distanceY, 0])
         self.franka.goto_pose(current_pose, use_impedance=False, ignore_virtual_walls=True)
 
-    def move_along_pipe(self,x=0.10,y=0.35, z=0.45, current_ee_RigidTransform_rotm=RigidTransform.rotation_from_quaternion([0,0.707,0.707,0])): 
+    def move_with_fixed_orientation(self,x=0.10,y=0.35, z=0.45, current_ee_RigidTransform_rotm=RigidTransform.rotation_from_quaternion([0,0.707,0.707,0])): 
 
         new_record_pose = RigidTransform(
             translation=np.array([x, y, z]),
@@ -84,7 +84,57 @@ class FrankaMotion:
     def rotate_j7(self, j7_radian):
         joints = self.franka.get_joints()
         joints[6] = j7_radian
-        self.franka.goto_joints(joints, duration=10, ignore_virtual_walls=True)
+        self.franka.goto_joints(joints, duration=5, ignore_virtual_walls=True)
+
+    def rotate_ee_orientation(self, tap_angle=20):
+        """
+        rotate the end effector orientation in x,y axis fixed frame w.r.t world frame
+        randomly select a rotation angle in x,y axis
+        """
+
+        # Get the current pose of the end effector in the world frame
+        T_ee_world = self.franka.get_pose()
+
+        # Create a rotation matrix for a 20 degree rotation around the x-axis
+        R_rot = RigidTransform.y_axis_rotation(np.deg2rad(tap_angle))
+
+        # Apply the rotation to the current pose
+        T_ee_world.rotation = np.dot(R_rot, T_ee_world.rotation)
+
+        # Move the end effector to the new pose
+        self.franka.goto_pose(T_ee_world, duration=5, use_impedance=False, ignore_virtual_walls=True)
+
+    def verify_motion_rotate_ee_orientation(self):
+        """
+        for N times, rotate j7 by 300/N degrees, rotate ee, tap stick, move away from stick, repeat
+        """
+        N = 4
+        j7_radian_list = np.linspace(-2.7, 2.7, N)
+
+        for i in range(N):
+            print(f"A) rotating j7 to {j7_radian_list[i]} radians, in degrees: {np.rad2deg(j7_radian_list[i])}")
+            self.rotate_j7(j7_radian_list[i])
+
+            # store joint position
+            joints_before_contact = self.get_joints() 
+            
+            #random tap angle degree from [0,20]
+            tap_angle = np.random.uniform(0, 20)
+            print(f"B) rotating ee orientation X by {tap_angle} degrees")
+            self.rotate_ee_orientation(tap_angle)
+
+            print(f"C) tapping stick")
+            goal_j1_angle = 5.0
+            record_duration = 2
+            self.tap_stick_joint(duration=record_duration/2, goal_j1_angle = goal_j1_angle)
+
+            time.sleep(3)
+
+            #go to stored joint position
+            print(f"D) moving away from stick")
+            self.go_to_joint_position(joints_before_contact, duration=2)
+
+            time.sleep(3)
 
     def get_joints(self):
         return self.franka.get_joints()
