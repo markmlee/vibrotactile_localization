@@ -1,0 +1,65 @@
+#UPDATE PARAMS
+model_directory: /home/iam-lab/audio_localization/vibrotactile_localization/learning/outputs/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined_model
+
+
+
+# ----- mic / data param -----
+background_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/franka_constant/background_noise/trial0/
+data_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/T25L42_Horizontal_SingleStick/
+transform: mel
+
+device_list: [2]
+num_channel: 6
+max_num_frames: 88200 #2 sec duration during data collection
+
+window_frame: 66150 #[44100 for 1 sec for input_spectrogram_bins = 138], [66150 for 1.5 sec for input_spectrogram_bins = 345] 
+CNN_layer_size: 4864 #[torch.nn.Linear(1536,512) for 0.2 second input],[#torch.nn.Linear(4864,512) for 1.0 second input]
+sample_rate: 44100
+n_fft: 512
+hop_length: 128
+input_spectrogram_bins: 345 #[138 for 0.2s duration for NFFT512, HOP 64], [345 for 1s duration for NFFT512, HOP 128]
+n_mels: 50
+resample_rate: 11025
+
+
+batch_size: 25
+val_batch_size: 25
+
+
+# ----- preprocessing parameters -----
+subtract_background: True # ***** key parameter *****
+normalize_audio_data: True # ***** key parameter *****
+
+load_meanvar_output: True
+
+# ----- augmentation param -----
+augment_data: True #for general _getitem_ modification enable/disable
+augment_timeshift: True # ***** key parameter ***** (upon init dataset)
+affine_transform: True
+augment_timemask: False #upon getitem in dataloader
+augment_freqmask: False #upon getitem in dataloader
+
+
+
+# ----- output representation parameters -----
+
+output_representation:  'xy' #'height' #'xy' #'radian' 
+output_representation_normalize: False #for ablation study, to normalize the output representation
+
+
+# -------- debugging --------
+save_meanvar_output: False
+
+# ----- visualization parameters -----
+inspect_data_label: False # to iteratively visualize the audio & GT label in 3D plot 
+visualize_subtract_background: False
+visuaize_dataset: True # to visualize the dataloader
+visuaize_regression: True # for evaluation, to visualize the regression output 
+
+
+# ----- Hardware specific parameters for vis -----
+cylinder_radius: 0.06 #in meters
+cylinder_origin_offset: 0.055 #in meters
+cylinder_predict_z_range: 0.2032 #in meters
+
+cylinder_transform_offset: 83 #59 in degrees. Dataset collection offset from when j7=0 to contact pt in angle. 

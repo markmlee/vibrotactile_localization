@@ -1,9 +1,38 @@
 #!/usr/bin/env python
 import rospy
+import tf2_ros
+import geometry_msgs.msg
 from visualization_msgs.msg import Marker
+
+def publish_static_transform():
+    """
+    equivalent of 
+    <node pkg="tf" type="static_transform_publisher" name="cylinder_broadcaster" args="0 0 0.155 0 0 -3.141517 /panda_hand /cylinder_origin 100"/>
+    """
+    broadcaster = tf2_ros.StaticTransformBroadcaster()
+    static_transform_stamped = geometry_msgs.msg.TransformStamped()
+
+    static_transform_stamped.header.stamp = rospy.Time.now()
+    static_transform_stamped.header.frame_id = "panda_hand"
+    static_transform_stamped.child_frame_id = "cylinder_origin"
+
+    static_transform_stamped.transform.translation.x = 0
+    static_transform_stamped.transform.translation.y = 0
+    static_transform_stamped.transform.translation.z = 0.155
+    static_transform_stamped.transform.rotation.x = 0
+    static_transform_stamped.transform.rotation.y = 0
+    static_transform_stamped.transform.rotation.z = 0
+    static_transform_stamped.transform.rotation.w = 1
+
+    broadcaster.sendTransform(static_transform_stamped)
+    rospy.sleep(1)  # Ensure the transform is broadcasted before the function ends
 
 def publish_obstacle():
     rospy.init_node('obstacle_publisher', anonymous=True)
+    
+    # Publish the static transform once
+    publish_static_transform()
+
     pub = rospy.Publisher('/obstacle_marker', Marker, queue_size=10)
     rate = rospy.Rate(1)  # 1 Hz
     while not rospy.is_shutdown():
@@ -15,7 +44,7 @@ def publish_obstacle():
         marker.type = Marker.CYLINDER
         marker.action = Marker.ADD
         marker.pose.position.x = 0
-        marker.pose.position.y = 0.496
+        marker.pose.position.y = 0.4
         marker.pose.position.z = 0.31
         marker.pose.orientation.x = 0.7071
         marker.pose.orientation.y = 0
@@ -24,7 +53,7 @@ def publish_obstacle():
         
         marker.scale.x = 0.02  # Diameter in X (2 * radius)
         marker.scale.y = 0.02  # Diameter in Y (2 * radius)
-        marker.scale.z = 0.45   # Height of the cylinder
+        marker.scale.z = 0.5   # Height of the cylinder
 
         marker.color.a = 1.0
         marker.color.r = 0.55  # Red component
@@ -43,7 +72,7 @@ def publish_obstacle():
         box_marker1.type = Marker.CUBE
         box_marker1.action = Marker.ADD
         box_marker1.pose.position.x = 0
-        box_marker1.pose.position.y = 0.3  # Adjust position to the side of the cylinder
+        box_marker1.pose.position.y = 0.5  # Adjust position to the side of the cylinder
         box_marker1.pose.position.z = 0.2  # Adjust for vertical alignment
         box_marker1.pose.orientation.x = 0
         box_marker1.pose.orientation.y = 0
@@ -70,7 +99,7 @@ def publish_obstacle():
         box_marker2.type = Marker.CUBE
         box_marker2.action = Marker.ADD
         box_marker2.pose.position.x = 0
-        box_marker2.pose.position.y = 0.8  # Adjust position to the other side of the cylinder
+        box_marker2.pose.position.y = 0.62  # Adjust position to the other side of the cylinder
         box_marker2.pose.position.z = 0.2  # Adjust for vertical alignment
         box_marker2.pose.orientation.x = 0
         box_marker2.pose.orientation.y = 0
@@ -85,7 +114,6 @@ def publish_obstacle():
         box_marker2.color.g = 0.52
         box_marker2.color.b = 0.25
         pub.publish(box_marker2)
-
 
         rate.sleep()
 

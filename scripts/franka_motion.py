@@ -5,7 +5,12 @@ import sys
 import signal
 import time
 from autolab_core import RigidTransform
+
+#ros
 import rospy
+import tf
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point
 
 import os
 # class for motion
@@ -229,6 +234,100 @@ class FrankaMotion:
         np.save(f"{save_folder_path}goal_j1_angle.npy", goal_j1_angle)
 
         # print(f"saved recorded trajectory to {save_folder_path}")
+
+
+    def xy_to_radians(self, x, y):
+        """
+        Convert x,y into radians from 0 to 2pi
+        """
+        rad = np.arctan2(y, x)
+        if rad < 0:
+            rad += 2*np.pi
+
+        return rad
+    
+    def radians_to_xy_on_cylinder(self, rad, cylinder_radius):
+        """
+        Convert radians to x,y with radius included
+        """
+        x = np.cos(rad) * cylinder_radius
+        y = np.sin(rad) * cylinder_radius
+
+        return x, y
+    
+    def transform_origin_to_cylinder(self, rad_input, cylinder_transform_offset):
+        """
+        Transform the arbitraty contact pt origin during data collection to the actual cylinder EE origin.
+        Abritrary origin during dataset collection - j7 measurement at 0 deg is  approx 45 deg offset to contact.
+        Return the transformed radians by subrtacting 45 deg offset .
+        """
+
+        # print(f"rad_input: {rad_input}, degrees: {np.degrees(rad_input)}")
+
+        rad = -1*rad_input - np.radians(cylinder_transform_offset)
+
+        rad2 = rad_input + np.radians(cylinder_transform_offset)
+        # print(f"rad: {rad}, rad2: {rad2}")
+        # if rad < 0:
+        #     rad += 2*np.pi
+
+        return rad
+
+    
+    def transform_predicted_XYZ_to_EE_XYZ(self, x,y,z, cylinder_radius, cylinder_transform_offset):
+        """
+        Transform the predicted contact pt XYZ (based on dataset cylinder frame) to the EE XYZ (to visualize on RVIZ on EE frame)
+        1. post process XY to radian back to XY
+        2. align the origin of the cylinder frame to the EE origin
+        3. convert to Point Msg
+        """
+
+        #convert xy into radians, then project back to x,y with radius mult
+        radians = self.xy_to_radians(x, y)
+
+        #transform origin to cylinder EE origin
+        radians = self.transform_origin_to_cylinder(radians, cylinder_transform_offset)
+        x_on_cylinder, y_on_cylinder = self.radians_to_xy_on_cylinder(radians, cylinder_radius)
+
+
+        transformed_point = Point()
+        transformed_point.x = x_on_cylinder
+        transformed_point.y = y_on_cylinder
+        transformed_point.z = (-1*z / 100)  #origin opposite from dataset and RViz. convert cm to m
+        transformed_point.z += 0.0 #add fine tuning offset
+
+        return transformed_point
+    
+    
+    def publish_contact_point(self, contact_pt):
+        # Create a marker
+        """
+        input: Point XYZ rosmsg
+        """
+        marker = Marker()
+        marker.header.frame_id = "cylinder_origin"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "contact_point"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = contact_pt.x
+        marker.pose.position.y = contact_pt.y
+        marker.pose.position.z = contact_pt.z
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = 0.05  # Sphere radius
+        marker.scale.y = 0.05
+        marker.scale.z = 0.05
+        marker.color.a = 1.0  # Alpha is non-zero (opaque)
+        marker.color.r = 1.0  # Red
+        marker.color.g = 0.0  # No green
+        marker.color.b = 0.0  # No blue
+
+        return marker
+
 
         
 
