@@ -17,7 +17,7 @@ from geometry_msgs.msg import Point
 
 #ros
 import rospy
-from visualization_msgs.msg import Marker
+from visualization_msgs.msg import Marker, MarkerArray
 #hydra
 import hydra
 from omegaconf import OmegaConf
@@ -39,7 +39,7 @@ from transforms import to_mel_spectrogram, get_signal
 # ================================================================================================================
 ROBOT_MOTION = True
 PREDICT_MODEL = True
-data_recording = False # used when running eval for online inference only. TURN ON for offline data collection.
+data_recording = True # used when running eval for online inference only. TURN ON for offline data collection.
 save_path_data = '/home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/T25L42_Horizontal_SingleStick/'
 devicelist=[2]
 number_of_mics = 6
@@ -229,20 +229,97 @@ def predict_contact_from_wavfile(cfg):
 
             #convert y_pred to radian
             radian_pred = torch.atan2(y_pred, x_pred)
+            deg_pred = torch.rad2deg(radian_pred)
 
             #resolve wrap around angle issues
             radian_error = calculate_radian_error(radian_pred, radian_val)
             degree_diff = torch.rad2deg(radian_error)
 
 
-    print(f"height_pred: {height_pred}, degree_diff: {degree_diff}")
+    print(f"height_pred: {height_pred}, deg_pred: {deg_pred},  degree_diff: {degree_diff}")
 
     return height_pred, x_pred, y_pred
 
-def robot_hit_along_list(hitting_location_list):
+def create_marker_and_publish(franka_robot, pub_contactloc, contact_pt, total_trial_count, pub_stick_markerarray, stick_markerarray):
+    scale_xyz_list = [0.05, 0.05, 0.05]
+    color_argba_list = [1, 1, 0, 0]
+    pred_marker = franka_robot.create_marker(total_trial_count, contact_pt,  scale_xyz_list, color_argba_list, lifetime=2)
+    
+    #publish the predicted contact point
+    pub_contactloc.publish(pred_marker)
+
+    #create new marker for stick array
+    array_scale_xyz_list = [0.03, 0.03, 0.03]
+    array_color_argba_list = [1, 0, 1, 0]
+    array_marker = franka_robot.create_marker(total_trial_count, contact_pt,  array_scale_xyz_list, array_color_argba_list, lifetime=30)
+
+    #publish the stick location
+    stick_markerarray.markers.append(array_marker)
+    pub_stick_markerarray.publish(stick_markerarray)
+
+def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, opposite_side=False):
     """
     robot execute tapping motion along 1 side of the stick
+    hit along the stick and publish
     """
+    global total_trial_count
+
+        #iterate through hitting locations
+    for count, hit_location in enumerate(hitting_location_list):
+        print(f"hit_location: {hit_location}")
+
+        #go to hit location
+        print(f" ===== #a. go to hitting location {hit_location} =====")
+        if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=hit_location[0], y=hit_location[1], z=hit_location[2])
+
+        #store current joint position
+        joints_before_contact = franka_robot.get_joints()
+
+        if opposite_side:
+            hit_j1_angle = -1 * goal_j1_angle
+        else:
+            hit_j1_angle = goal_j1_angle
+
+        #tap stick
+        print(f" ===== #b. tapping stick joint at {hit_j1_angle} ===== ")
+        if ROBOT_MOTION: franka_robot.tap_stick_y_joint(duration=record_duration/2, goal_j1_angle = hit_j1_angle)
+
+        if data_recording:
+            # Create a Thread object and start it
+            mic = microphone.Microphone(devicelist, fs, channels_in)
+            record_mics_thread = threading.Thread(target=mic.record_all_mics, args=(save_path_data, record_duration, total_trial_count, gt_label))
+            record_mics_thread.start()
+
+        #get proprioceptive data
+        x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau = franka_robot.record_trajectory(duration=record_duration, dt=0.01) 
+        
+        #save the recorded trajectory in save_path_data
+        franka_robot.save_recorded_trajectory(save_path_data, total_trial_count , x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau, goal_j1_angle)
+
+        time.sleep(1)
+
+        # ************* make model prediction here *************
+        if PREDICT_MODEL:
+            height_pred, x_pred, y_pred = predict_contact_from_wavfile(cfg)
+            height_i, x_i, y_i = height_pred[total_trial_count].item(), x_pred[total_trial_count].item(), y_pred[total_trial_count].item()
+            print(f"trial: {total_trial_count}, height_pred: {height_i}, x_pred: {x_i}, y_pred: {y_i}")
+        # ****************************************************
+
+        #post process XY -> radian -> XY (to ensure projection is on the unit circle) AND (resolve wrap around issues) 
+        contact_pt = franka_robot.transform_predicted_XYZ_to_EE_XYZ(x_i, y_i,height_i, cfg.cylinder_radius, cfg.cylinder_transform_offset)
+        #publish makers
+        create_marker_and_publish(franka_robot, pub_contactloc, contact_pt, total_trial_count, pub_stick_markerarray, stick_markerarray)
+
+
+        #restore robot to joint position
+        print(f" ===== #c. moving back to precontact joints  ===== ")
+        if ROBOT_MOTION: franka_robot.go_to_joint_position(joints_before_contact, duration=5)
+
+        #increment trial count
+        total_trial_count += 1
+
+    
+
 @hydra.main(version_base='1.3',config_path='../../learning/configs', config_name = 'inference')
 def main(cfg: DictConfig):
     global total_trial_count
@@ -254,6 +331,7 @@ def main(cfg: DictConfig):
 
     # ROS publisher for the contact location
     pub_contactloc = rospy.Publisher('/contact_location', Marker, queue_size=10) #--> publish X: rad_X, Y: rad_Y, Z:height
+    pub_stick_markerarray = rospy.Publisher('/stick_location', MarkerArray, queue_size=10)
 
     print(f" ===== #1. go to initial pose =====")
     if ROBOT_MOTION: franka_robot.go_to_init_pose()
@@ -274,8 +352,8 @@ def main(cfg: DictConfig):
     gt_label = [-0.101, j7_joint_radian] #[-0.101 fixed height, 0 fixed radian]
     print(f"gt label: {gt_label}")
     
-    x1,y1,z1 = 0, 0.25, 0.57
-    x2,y2,z2 = 0, 0.4, 0.57
+    x1,y1,z1 = 0, 0.27, 0.57
+    x2,y2,z2 = 0, 0.38, 0.57
     rod_start_position = [x1,y1,z1]
     rod_end_position = [x2,y2,z2]
     number_of_hitting_samples = 3
@@ -285,69 +363,25 @@ def main(cfg: DictConfig):
     stick_axis = 'y'
 
     hitting_location_list, hitting_location_opposite_list = get_hitting_location(rod_start_position, rod_end_position, number_of_hitting_samples, stick_length, stick_thickness, stick_tapping_offset, stick_axis)
-
-    print(f"hitting_location_list: {hitting_location_list}")
-
-    robot_hit_along_list(hitting_location_list)
-
-    #iterate through hitting locations
-    for count, hit_location in enumerate(hitting_location_list):
-        print(f"hit_location: {hit_location}")
-
-        #go to hit location
-        print(f" ===== #3. go to hitting location {hit_location} =====")
-        if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=hit_location[0], y=hit_location[1], z=hit_location[2])
-
-        #store current joint position
-        joints_before_contact = franka_robot.get_joints()
-
-        #tap stick
-        print(f" ===== #4. tapping stick joint at {goal_j1_angle} ===== ")
-        if ROBOT_MOTION: franka_robot.tap_stick_joint(duration=record_duration/2, goal_j1_angle = goal_j1_angle)
-
-        if data_recording:
-            # Create a Thread object and start it
-            mic = microphone.Microphone(devicelist, fs, channels_in)
-            record_mics_thread = threading.Thread(target=mic.record_all_mics, args=(save_path_data, record_duration, total_trial_count, gt_label))
-            record_mics_thread.start()
-
-        #get proprioceptive data
-        x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau = franka_robot.record_trajectory(duration=record_duration, dt=0.01) 
-        
-        #save the recorded trajectory in save_path_data
-        franka_robot.save_recorded_trajectory(save_path_data, total_trial_count , x_t, xdot_t, x_t_des, xdot_t_des, q_t, q_tau, goal_j1_angle)
-
-        time.sleep(5)
-
-        # ************* make model prediction here *************
-        if PREDICT_MODEL:
-            height_pred, x_pred, y_pred = predict_contact_from_wavfile(cfg)
-            height_i, x_i, y_i = height_pred[count].item(), x_pred[count].item(), y_pred[count].item()
-        # ****************************************************
-
-        #post process XY -> radian -> XY (to ensure projection is on the unit circle) AND (resolve wrap around issues) 
-        contact_pt = franka_robot.transform_predicted_XYZ_to_EE_XYZ(x_i, y_i,height_i, cfg.cylinder_radius, cfg.cylinder_transform_offset)
-
-        pred_marker = franka_robot.publish_contact_point(contact_pt)
-
-        #publish the predicted contact point
-        pub_contactloc.publish(pred_marker)
-
-
-        #restore robot to joint position
-        print(f" ===== #5. moving back to precontact joints  ===== ")
-        if ROBOT_MOTION: franka_robot.go_to_joint_position(joints_before_contact, duration=5)
-
-        #increment trial count
-        total_trial_count += 1
     
-    
+    #markerarray for the rod
+    stick_markerarray = MarkerArray()
 
+    print(f" ===== #4. Hit along {hitting_location_list} =====")
+    robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, opposite_side=False)
 
-        
-    #restore robot to initial position
-    print(f"restoring robot to initial_pos joints")
-    if ROBOT_MOTION: franka_robot.go_to_joint_position(robot_joints_restore_position, duration=5)
+    #move to opposite side of the stick
+    print(f" ===== #5. moving to opposite side of stick =====")
+    if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=0, y=0.35, z=0.8, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, duration=5)
+
+    print(f" ===== #6. Hit along {hitting_location_opposite_list} =====")
+    robot_hit_along_list(hitting_location_opposite_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, opposite_side=True)
+
+    #move to opposite side of the stick
+    print(f" ===== #7. moving to opposite side of stick =====")
+    if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=0, y=0.35, z=0.8, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, duration=5)
+
+    #restore robot to home position
     print(f"restoring robot to home joints")
     if ROBOT_MOTION: franka_robot.reset_joints()
 

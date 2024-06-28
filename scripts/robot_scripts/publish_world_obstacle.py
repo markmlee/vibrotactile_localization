@@ -53,7 +53,7 @@ def publish_obstacle():
         
         marker.scale.x = 0.02  # Diameter in X (2 * radius)
         marker.scale.y = 0.02  # Diameter in Y (2 * radius)
-        marker.scale.z = 0.5   # Height of the cylinder
+        marker.scale.z = 0.4   # Height of the cylinder
 
         marker.color.a = 1.0
         marker.color.r = 0.55  # Red component

@@ -62,4 +62,4 @@ cylinder_radius: 0.06 #in meters
 cylinder_origin_offset: 0.055 #in meters
 cylinder_predict_z_range: 0.2032 #in meters
 
-cylinder_transform_offset: 83 #59 in degrees. Dataset collection offset from when j7=0 to contact pt in angle. 
+cylinder_transform_offset: 90 #59 in degrees. Dataset collection offset from when j7=0 to contact pt in angle. 
