@@ -40,11 +40,21 @@ from transforms import to_mel_spectrogram, get_signal
 ROBOT_MOTION = True
 PREDICT_MODEL = True
 data_recording = True # used when running eval for online inference only. TURN ON for offline data collection.
-save_path_data = '/home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/T25L42_Horizontal_SingleStick/'
+save_path_data = '/home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/cross_easy2/'
+
+x1,y1,z1 = 0, 0.24, 0.47
+x2,y2,z2 = 0, 0.33, 0.47
+
+x3,y3,z3 = 0, 0.48, 0.47
+x4,y4,z4 = 0, 0.51, 0.47
+
 devicelist=[2]
 number_of_mics = 6
 channels_in = 6
 fs = 44100
+
+
+number_of_hitting_samples = 1
 
 cylinder_length = 0.203 #meters along the cylinder to traverse
 goal_j1_angle = 14
@@ -113,6 +123,8 @@ def test_blind_ee_orientation_motion(franka_robot):
     print(f"T_ee_current_pose {T_ee_current_pose}")
 
     franka_robot.verify_motion_rotate_ee_orientation()
+
+
 
 
 
@@ -257,7 +269,7 @@ def create_marker_and_publish(franka_robot, pub_contactloc, contact_pt, total_tr
     stick_markerarray.markers.append(array_marker)
     pub_stick_markerarray.publish(stick_markerarray)
 
-def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, opposite_side=False):
+def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, current_ee_RigidTransform_rotm, opposite_side=False):
     """
     robot execute tapping motion along 1 side of the stick
     hit along the stick and publish
@@ -270,7 +282,7 @@ def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub
 
         #go to hit location
         print(f" ===== #a. go to hitting location {hit_location} =====")
-        if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=hit_location[0], y=hit_location[1], z=hit_location[2])
+        if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=hit_location[0], y=hit_location[1], z=hit_location[2], current_ee_RigidTransform_rotm = current_ee_RigidTransform_rotm)
 
         #store current joint position
         joints_before_contact = franka_robot.get_joints()
@@ -282,7 +294,7 @@ def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub
 
         #tap stick
         print(f" ===== #b. tapping stick joint at {hit_j1_angle} ===== ")
-        if ROBOT_MOTION: franka_robot.tap_stick_y_joint(duration=record_duration/2, goal_j1_angle = hit_j1_angle)
+        if ROBOT_MOTION: franka_robot.tap_stick_joint(duration=record_duration/2, goal_j1_angle = hit_j1_angle)
 
         if data_recording:
             # Create a Thread object and start it
@@ -303,6 +315,7 @@ def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub
             height_pred, x_pred, y_pred = predict_contact_from_wavfile(cfg)
             height_i, x_i, y_i = height_pred[total_trial_count].item(), x_pred[total_trial_count].item(), y_pred[total_trial_count].item()
             print(f"trial: {total_trial_count}, height_pred: {height_i}, x_pred: {x_i}, y_pred: {y_i}")
+            franka_robot.save_prediction( height_i, x_i,y_i , save_path_data, total_trial_count)
         # ****************************************************
 
         #post process XY -> radian -> XY (to ensure projection is on the unit circle) AND (resolve wrap around issues) 
@@ -318,7 +331,74 @@ def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub
         #increment trial count
         total_trial_count += 1
 
+def hit_along_both_sides(hitting_location_list, hitting_location_opposite_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, initial_recording_pose):
+    """
+    motion to execute tapping motion along both sides of the stick
+    """
+    print(f" ===== #4. Hit along {hitting_location_list} =====")
+    robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, opposite_side=False)
+
+
+    print(f" ===== #5. moving to opposite side of stick =====")
+    # if ROBOT_MOTION: franka_robot.move_absolute_position(x=0.05, y=0.35, z=0.7, duration=10)
+    # if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=-0.1, y=0.35, z=0.65, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, duration=10)
+
+    if ROBOT_MOTION: franka_robot.move_delta_position(x=0, y = 0, z=0.20, duration=10)
+    if ROBOT_MOTION: franka_robot.move_delta_position(x=-0.25, y = 0, z=0, duration=10)
+
+
+    print(f" ===== #6. Hit along {hitting_location_opposite_list} =====")
+    robot_hit_along_list(hitting_location_opposite_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, opposite_side=True)
+
+    #move to opposite side of the stick
+    print(f" ===== #7. moving to opposite side of stick =====")
+    # if ROBOT_MOTION: franka_robot.move_absolute_position(x=-0.10, y=0.35, z=0.65, duration=10)
+    # if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=-0.10, y=0.35, z=0.65, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, duration=5)
+
+    if ROBOT_MOTION: franka_robot.move_delta_position(x=0, y = 0, z=0.20, duration=10)
+    if ROBOT_MOTION: franka_robot.move_delta_position(x=0.25, y = 0, z=0, duration=10)
+
+def hit_along_one_side_only(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, initial_recording_pose):
+    """
+    motion to execute tapping motion along one side of the stick
+    """
+    print(f" ===== #4. Hit along {hitting_location_list} =====")
+    robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, opposite_side=False)
+
+def motion_for_hitting_cross():
+    """
+    demo motion - cross easy demo.
+    2 horizontal hitting motions
+    2 vertical hitting motions
+    """
+
+def motion_for_hitting_stick(franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, initial_recording_pose):
+    """
+    demo motion - stick hitting demo
+    2 horizontal hitting motion
+    """
+    x1,y1,z1 = 0, 0.27, 0.47
+    x2,y2,z2 = 0, 0.33, 0.47
+
+    rod_start_position = [x1,y1,z1]
+    rod_end_position = [x2,y2,z2]
+    stick_length = 0.15
+    stick_thickness = 0.025
+    stick_tapping_offset = 0.1
+    stick_axis = 'y'
+
+    hitting_location_list, hitting_location_opposite_list = get_hitting_location(rod_start_position, rod_end_position, number_of_hitting_samples, stick_length, stick_thickness, stick_tapping_offset, stick_axis)
+
+    print(f"hit location list: {hitting_location_list}")
     
+    #markerarray for the rod
+    stick_markerarray = MarkerArray()
+
+    # ---------------------------------- execute tapping motion along 1 length, both sides of stick ----------------------------------
+    hit_along_both_sides(hitting_location_list, hitting_location_opposite_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, initial_recording_pose)
+    # -------------------------------------------------------------------------------------------------------------------------------
+
+
 
 @hydra.main(version_base='1.3',config_path='../../learning/configs', config_name = 'inference')
 def main(cfg: DictConfig):
@@ -340,8 +420,8 @@ def main(cfg: DictConfig):
 
     robot_joints_restore_position = franka_robot.get_joints()
 
-    print(f" ===== #3. rotate to j7 = 0 =====")
-    if ROBOT_MOTION: franka_robot.rotate_j7(0)
+    print(f" ===== #3. rotate to j7 = 1.5708 (-90 deg) =====")
+    if ROBOT_MOTION: franka_robot.rotate_j7(-1.5708)
 
     #store information about the cylinder
     #get inital recording x,y position
@@ -352,35 +432,44 @@ def main(cfg: DictConfig):
     gt_label = [-0.101, j7_joint_radian] #[-0.101 fixed height, 0 fixed radian]
     print(f"gt label: {gt_label}")
     
-    x1,y1,z1 = 0, 0.27, 0.57
-    x2,y2,z2 = 0, 0.38, 0.57
+    
     rod_start_position = [x1,y1,z1]
     rod_end_position = [x2,y2,z2]
-    number_of_hitting_samples = 3
     stick_length = 0.15
     stick_thickness = 0.025
     stick_tapping_offset = 0.1
     stick_axis = 'y'
 
+    rod_start_position2 = [x3,y3,z3]
+    rod_end_position2 = [x4,y4,z4]
+
     hitting_location_list, hitting_location_opposite_list = get_hitting_location(rod_start_position, rod_end_position, number_of_hitting_samples, stick_length, stick_thickness, stick_tapping_offset, stick_axis)
+    hitting_location_list2, hitting_location_opposite_list2 = get_hitting_location(rod_start_position2, rod_end_position2, number_of_hitting_samples, stick_length, stick_thickness, stick_tapping_offset, stick_axis)
+
+    print(f"hit location list: {hitting_location_list}")
+    print(f"hitting location list2: {hitting_location_list2}")
     
     #markerarray for the rod
     stick_markerarray = MarkerArray()
 
-    print(f" ===== #4. Hit along {hitting_location_list} =====")
-    robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, opposite_side=False)
+    # ---------------------------------- execute tapping motion along 1 length, both sides of stick ----------------------------------
+    hit_along_both_sides(hitting_location_list, hitting_location_opposite_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, initial_recording_pose)
+    # -------------------------------------------------------------------------------------------------------------------------------
 
-    #move to opposite side of the stick
-    print(f" ===== #5. moving to opposite side of stick =====")
-    if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=0, y=0.35, z=0.8, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, duration=5)
+    print(f" ------ moving +Z to next hitting location ------  ")
+    #move robot EE up +z by 0.1, and then +y by 0.1
+    if ROBOT_MOTION: franka_robot.move_delta_position(z=0.05, duration=10)
+    if ROBOT_MOTION: franka_robot.move_delta_position(y=0.25, duration=10)
 
-    print(f" ===== #6. Hit along {hitting_location_opposite_list} =====")
-    robot_hit_along_list(hitting_location_opposite_list, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, opposite_side=True)
+    print(f" ------ moving to next hitting location ------  ")
+    # hit_along_one_side_only(hitting_location_list2, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, initial_recording_pose)
+    hit_along_both_sides(hitting_location_list2, hitting_location_opposite_list2, franka_robot, gt_label, cfg, pub_contactloc, pub_stick_markerarray, stick_markerarray, initial_recording_pose)
 
-    #move to opposite side of the stick
-    print(f" ===== #7. moving to opposite side of stick =====")
-    if ROBOT_MOTION: franka_robot.move_with_fixed_orientation(x=0, y=0.35, z=0.8, current_ee_RigidTransform_rotm = initial_recording_pose.rotation, duration=5)
+    #move robot EE up +z by 0.3
+    print(f" ------ moving +Z before going to reset joint pos ------  ")
+    if ROBOT_MOTION: franka_robot.move_delta_position(z=0.05, duration=10)
 
+    
     #restore robot to home position
     print(f"restoring robot to home joints")
     if ROBOT_MOTION: franka_robot.reset_joints()

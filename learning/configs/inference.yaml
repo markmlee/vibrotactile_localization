@@ -5,7 +5,7 @@ model_directory: /home/iam-lab/audio_localization/vibrotactile_localization/lear
 
 # ----- mic / data param -----
 background_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/franka_constant/background_noise/trial0/
-data_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/T25L42_Horizontal_SingleStick/
+data_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/cross_easy2/
 transform: mel
 
 device_list: [2]
