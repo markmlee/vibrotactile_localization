@@ -15,6 +15,9 @@ import torchaudio
 
 #ros
 import rospy
+import tf
+from visualization_msgs.msg import Marker
+
 from std_msgs.msg import String, Int32
 from geometry_msgs.msg import Point
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../catkin_ws/sounddevice_ros/msg')))
@@ -77,6 +80,18 @@ class AudioMonitor:
 
         # ROS publisher for the contact location
         self.pub_contactloc = rospy.Publisher('/contact_location', Point, queue_size=10) #--> publish X: rad_X, Y: rad_Y, Z:height
+
+        # ROS Publisher for visualizing contact location
+        self.pub_contactloc_viz = rospy.Publisher('/contact_location_viz', Point, queue_size=10)
+        self.marker_pub = rospy.Publisher('/visualization_marker', Marker, queue_size=10)
+        self.marker_gt_pub = rospy.Publisher('/visualization_marker_gt', Marker, queue_size=10)
+
+        #subscriber for GT contact location, visualization
+        sub_gt = rospy.Subscriber('/contact_location_GT', Point, self.audio_callback_gt, queue_size=10)
+
+        # ROS tf listener and broadcaster
+        self.tf_listener = tf.TransformListener()
+        self.tf_broadcaster = tf.TransformBroadcaster()
 
         #load model.pth from checkpoint
         self.model = CNNRegressor2D(cfg)
@@ -292,6 +307,68 @@ class AudioMonitor:
         
         return False  
 
+    def publish_contact_point(self, contact_pt):
+        # Create a marker
+        marker = Marker()
+        marker.header.frame_id = "panda_hand"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "contact_point"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = contact_pt.x
+        marker.pose.position.y = contact_pt.y
+        marker.pose.position.z = contact_pt.z
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = 0.05  # Sphere radius
+        marker.scale.y = 0.05
+        marker.scale.z = 0.05
+        marker.color.a = 1.0  # Alpha is non-zero (opaque)
+        marker.color.r = 1.0  # Red
+        marker.color.g = 0.0  # No green
+        marker.color.b = 0.0  # No blue
+
+        # Publish the marker
+        self.marker_pub.publish(marker)
+
+    def publish_gt_contact_point(self, contact_pt):
+        #Create a marker
+        marker = Marker()
+        marker.header.frame_id = "panda_hand"
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = "gt_contact_point"
+        marker.id = 1
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+        marker.pose.position.x = contact_pt.x
+        marker.pose.position.y = contact_pt.y
+        marker.pose.position.z = contact_pt.z
+        marker.pose.orientation.x = 0.0
+        marker.pose.orientation.y = 0.0
+        marker.pose.orientation.z = 0.0
+        marker.pose.orientation.w = 1.0
+        marker.scale.x = 0.02  # Sphere radius
+        marker.scale.y = 0.02
+        marker.scale.z = 0.02
+        marker.color.a = 1.0  # Alpha is non-zero (opaque)
+        marker.color.r = 0.0  # No red
+        marker.color.g = 1.0  # green
+        marker.color.b = 0.0  # No blue
+
+        # Publish the marker
+        self.marker_gt_pub.publish(marker)
+
+
+    def audio_callback_gt(self, msg):
+        """
+        Callback method for the ground truth contact location.
+        """
+        print(f" **** Received ground truth: {msg} ****")
+        self.gt_contact_pt = msg
+
     def predict_location(self, processed_audio):
         """
         Predict the contact location using the trained model.
@@ -308,6 +385,66 @@ class AudioMonitor:
         contact_pt.z = Y_pred[0][0].item()
         self.pub_contactloc.publish(contact_pt)
 
+    def xy_to_radians(self, x, y):
+        """
+        Convert x,y into radians from 0 to 2pi
+        """
+        rad = np.arctan2(y, x)
+        if rad < 0:
+            rad += 2*np.pi
+
+        return rad
+    
+    def radians_to_xy_on_cylinder(self, rad):
+        """
+        Convert radians to x,y with radius included
+        """
+        x = np.cos(rad) * self.cfg.cylinder_radius
+        y = np.sin(rad) * self.cfg.cylinder_radius
+
+        return x, y
+    
+    def transform_origin_to_cylinder(self, rad_input):
+        """
+        Transform the arbitraty contact pt origin during data collection to the actual cylinder EE origin.
+        Abritrary origin during dataset collection - j7 measurement at 0 deg is  approx 45 deg offset to contact.
+        Return the transformed radians by subrtacting 45 deg offset .
+        """
+
+        print(f"rad_input: {rad_input}, degrees: {np.degrees(rad_input)}")
+
+        rad = -1*rad_input - np.radians(self.cfg.cylinder_transform_offset)
+
+        rad2 = rad_input + np.radians(self.cfg.cylinder_transform_offset)
+        print(f"rad: {rad}, rad2: {rad2}")
+        # if rad < 0:
+        #     rad += 2*np.pi
+
+        return rad
+
+    def transform_predicted_XYZ_to_EE_XYZ(self, x,y,z):
+        """
+        Transform the predicted contact pt XYZ (based on dataset cylinder frame) to the EE XYZ (to visualize on RVIZ on EE frame)
+        """
+
+        #convert xy into radians, then project back to x,y with radius mult
+        radians = self.xy_to_radians(x, y)
+        print(f"radians: {radians}, degrees: {np.degrees(radians)}")
+
+        #transform origin to cylinder EE origin
+        radians = self.transform_origin_to_cylinder(radians)
+        print(f"transformed radians: {radians}, degrees: {np.degrees(radians)}")
+        x_on_cylinder, y_on_cylinder = self.radians_to_xy_on_cylinder(radians)
+
+
+        transformed_point = Point()
+        transformed_point.x = x_on_cylinder
+        transformed_point.y = y_on_cylinder
+        transformed_point.z = self.cfg.cylinder_predict_z_range - (z / 100)  #convert cm to m
+        transformed_point.z += self.cfg.cylinder_origin_offset #add offset to the height of where prediction region starts 
+
+        return transformed_point
+
     def predict_location_eval(self, processed_audio, label):
         """
         Predict the contact location using the trained model.
@@ -321,14 +458,49 @@ class AudioMonitor:
         Y_pred = self.model(processed_audio) 
         print(f"Y_pred: {Y_pred}")
 
-        #publish contact location
-        contact_pt = Point()
-        contact_pt.x = Y_pred[0][1].item()
-        contact_pt.y = Y_pred[0][2].item()
-        contact_pt.z = Y_pred[0][0].item()
+        # ---------------
+        contact_pt = self.transform_predicted_XYZ_to_EE_XYZ(Y_pred[0][1].item(), Y_pred[0][2].item(), Y_pred[0][0].item())
+        contact_pt_gt = self.transform_predicted_XYZ_to_EE_XYZ(self.gt_contact_pt.x, self.gt_contact_pt.y, self.gt_contact_pt.z)
+
+        # #convert xy into radians, then project back to x,y with radius mult
+        # radians = self.xy_to_radians(Y_pred[0][1].item(), Y_pred[0][2].item())
+        # print(f"radians: {radians}, degrees: {np.degrees(radians)}")
+
+        # #transform origin to cylinder EE origin
+        # radians = self.transform_origin_to_cylinder(radians)
+        # print(f"transformed radians: {radians}, degrees: {np.degrees(radians)}")
+        # x_on_cylinder, y_on_cylinder = self.radians_to_xy_on_cylinder(radians)
+
+
+        # #publish contact location
+        # contact_pt = Point()
+        # contact_pt.x = x_on_cylinder
+        # contact_pt.y = y_on_cylinder
+        # contact_pt.z = self.cfg.cylinder_predict_z_range - (Y_pred[0][0].item() / 100)  #convert cm to m
+        # contact_pt.z += self.cfg.cylinder_origin_offset #add offset to the height of where prediction region starts 
+
+        # ---------------
+
         self.pub_contactloc.publish(contact_pt)
 
-        # print(f"ground truth: {label}")
+        #print contact and gt contact
+        print(f"contact pt x: {contact_pt.x}, y: {contact_pt.y}, z: {contact_pt.z}")
+        print(f"gt contact pt x: {contact_pt_gt.x}, y: {contact_pt_gt.y}, z: {contact_pt_gt.z}")
+
+        #TODO: TF lookup of link  /panda_hand and then add relative TF of contact_pt 
+        self.tf_broadcaster.sendTransform(
+            (contact_pt.x, contact_pt.y, contact_pt.z),
+            tf.transformations.quaternion_from_euler(0, 0, 0),
+            rospy.Time.now(),
+            '/contact_pt',
+            '/panda_hand'
+        )
+
+        #publish contact point for visualization
+        self.publish_contact_point(contact_pt)
+
+        #publish GT contact location for visualization
+        self.publish_gt_contact_point(contact_pt_gt)
 
         #height error
         height_error = np.abs(Y_pred[0][0].item() - label[0])
@@ -348,7 +520,7 @@ def main(cfg: DictConfig):
     sample_duration = 1.0  # duration of the audio window for processing (in sec)
     
     #rate of main loop
-    main_loop_rate = 10
+    main_loop_rate = 3
     rate = rospy.Rate(main_loop_rate)
 
     audio_monitor = AudioMonitor(cfg, audio_topics, fs, buffer_duration, sample_duration, main_loop_rate)

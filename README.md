@@ -91,8 +91,27 @@ Run the ROS node to monitor audio topic and output contact classification
 python AudioMonitor.py
 ```
 
+Visualizing the robot in RViz
+```
+cd /home/iam-lab/Documents/frankapy/launch
+roslaunch franka_cylinder_rviz.launch
+```
+
+publish obstacle world
+```
+cd /home/iam-lab/audio_localization/vibrotactile_localization/scripts/robot_scripts
+python publish_world_obstacle.py
+```
+
 ## Analyzing the time-shift & amplitude vs location data
 Uncomment the desired function load_data_for_amplitude() or load_data_for_timeshift() 
 ```
 python process_data.py
+```
+
+## Combine datasets
+Update the desired directory name
+
+```
+python process_gt_label.py
 ```

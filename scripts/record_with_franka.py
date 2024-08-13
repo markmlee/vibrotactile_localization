@@ -26,14 +26,20 @@ fs = 44100
 
 record_duration = 2 #seconds for audio, trajectory recording
 wait_duration = record_duration
-distance_sample_count = 10 #20 number of samples to take along the height (1cm res)
+distance_sample_count = 3 #5 (only) 20 number of samples to take along the height (1cm res)
 radian_sample_count = 10  #10 number of samples to take along the radian (300 degrees/10 = 30 degrees res)
-total_repeat_count = 2 #3 number of times to repeat the 2D motion (3 times)
+total_repeat_count = 1 #3 number of times to repeat the 2D motion (3 times)
+y_location_sample_count = 1
+
+#--> should get total number of 1200 trials (10x10x3x4 = 1200)
 #--> should get total number of 2400 trials (20x10x3x4 = 2400)
 
 goal_j1_angle_min, goal_j1_angle_max = 14, 16 #12,15 for non-angled #[7.0 MIN, 15 MAX] #degrees for tap stick joint
 j7_radian_min, j7_radian_max =  -2.7, 2.7 #0,0 #-2.7, 2.7 #radians for tap stick joint
 tap_angle_min, tap_angle_max = 0, 0 #0, 10 #degrees for tap stick joint ****************** CHANGE HERE ************************
+x_stick_offset_position = 0.1 #0.1m position, which is 10cm away from 0m stick position
+
+
 HIT_AT_ANGLE = False #****************** CHANGE HERE ************************
 if HIT_AT_ANGLE:
     distance_sample_count = 10 #20 number of samples to take along the height (1cm res)
@@ -42,21 +48,26 @@ if HIT_AT_ANGLE:
     tap_angle_min, tap_angle_max = 0, 10 #0, 10 #degrees for tap stick joint ****************** CHANGE HERE ************************
 
 
-
-y_location_min, y_location_max = 0.25, 0.40 #meters along the y-axis to traverse from robot base
-y_location_sample_count = 3
+total_trial_count = 0 
+y_location_min, y_location_max = 0.25, 0.35 #0.25, 0.38 #meters along the y-axis to traverse from robot base
 y_location_list = np.linspace(y_location_min, y_location_max, y_location_sample_count)
 
 
-save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/wood_T50_L42_Horizontal/"
+save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/find_offset_GT/"
 
-RADIAN_HARDCODE_EVAL = False #TODO ****************** CHANGE HERE ************************
+RADIAN_HARDCODE_EVAL = True #TODO ****************** CHANGE HERE ************************
+LATERAL_HIT_MOTION = True #TODO ****************** CHANGE HERE ************************
 
 #radian angle in 5 evenly spaced intervals from [-2.8 to 2.8]
 radian_along_cylinder = np.linspace(j7_radian_min, j7_radian_max, radian_sample_count)
 if RADIAN_HARDCODE_EVAL:
-    y_location_min, y_location_max = 0.40, 0.40 #meters along the y-axis to traverse from robot base
-    save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/test_generalization/stick_T50_L42_Y_40/"
+    y_stick_offset_position = 0.34
+    y_location_min, y_location_max = y_stick_offset_position,y_stick_offset_position #0.25, 0.38 meters along the y-axis to traverse from robot base
+    save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/test_generalization/cross_easy_X_15_Left/"
+
+    if LATERAL_HIT_MOTION:
+        x_stick_offset_position = 0.15
+        
 
     distance_sample_count = 5 #number of samples to take along the height
     total_repeat_count = 1 #number of times to repeat the 2D motion
@@ -66,13 +77,18 @@ if RADIAN_HARDCODE_EVAL:
     goal_j1_angle_min, goal_j1_angle_max = 15, 15 #no varying speed when hitting the stick
     tap_angle_min, tap_angle_max = 0, 0 #degrees for tap stick joint
     HIT_AT_ANGLE = False
-
     
     y_location_sample_count = 1
     y_location_list = np.linspace(y_location_min, y_location_max, y_location_sample_count)
 
 
-total_trial_count = 0
+OPPOSITE_SIDE = False #****************** CHANGE HERE ************************
+if OPPOSITE_SIDE:
+    goal_j1_angle_min, goal_j1_angle_max = -16, -14
+    x_stick_offset_position = -1 * x_stick_offset_position
+
+
+
 end_trial_count = distance_sample_count * radian_sample_count * total_repeat_count * y_location_sample_count
 print(f" *********** Expected total trials: {end_trial_count} ***********")
 
@@ -93,6 +109,10 @@ def scale_j1_angle_with_y(y_hit_location, goal_j1_angle_min, goal_j1_angle_max):
     """
     angle_min_ = 12 #10
     angle_max_ = 14 #12 #j1 angle to scale with y location
+
+    if OPPOSITE_SIDE:
+        angle_min_ = -angle_min_
+        angle_max_ = -angle_max_
 
     theta_min = goal_j1_angle_min +  (angle_min_ - goal_j1_angle_min)/(0.4-0.25) * (y_hit_location - 0.25)
     theta_max = goal_j1_angle_max + (angle_max_ - goal_j1_angle_max)/(0.4-0.25) * (y_hit_location - 0.25)
@@ -126,7 +146,7 @@ def tap_along_1D_cylinder(franka_robot, z_along_cylinder, init_z, current_ee_Rig
         gt_label = [init_z-distance - cylinder_length/2 ,gt_label_rad] #[-0.101, 0,  +0.101] height, and [-2.7, 2.7] radian
 
         print(f" ---- #5. moving to {distance} along the cylinder ----")
-        franka_robot.move_with_fixed_orientation(x=0.12, y=y_hit_location, z= z_along_cylinder[i], current_ee_RigidTransform_rotm = current_ee_RigidTransform_rotm)
+        franka_robot.move_with_fixed_orientation(x=x_stick_offset_position, y=y_hit_location, z= z_along_cylinder[i], current_ee_RigidTransform_rotm = current_ee_RigidTransform_rotm)
 
         # store joint position
         joints_before_contact = franka_robot.get_joints() 
@@ -149,7 +169,9 @@ def tap_along_1D_cylinder(franka_robot, z_along_cylinder, init_z, current_ee_Rig
         # pub_contactloc.publish(contact_pt)
 
         print(f" ---- #6. tapping stick joint at {goal_j1_angle} ----")
-        franka_robot.tap_stick_joint(duration=record_duration/2, goal_j1_angle = goal_j1_angle)
+        
+        if LATERAL_HIT_MOTION: franka_robot.tap_stick_y_joint(duration=record_duration/2, goal_j6_angle=16)
+        else: franka_robot.tap_stick_joint(duration=record_duration/2, goal_j1_angle = goal_j1_angle)
 
         if data_recording:
             # Create a Thread object and start it
@@ -206,10 +228,18 @@ def main():
 
 
     print(f" ===== #1. go to initial pose =====")
-    franka_robot.go_to_init_pose()
-    print(f" ===== #2. go to initial recording pose =====")
-    franka_robot.go_to_init_recording_pose()
+    if OPPOSITE_SIDE: franka_robot.go_to_init_pose_opposite()
+    else: franka_robot.go_to_init_pose()
 
+    
+
+    
+    print(f" ===== #2. go to initial recording pose =====")
+    
+    franka_robot.go_to_init_recording_pose(x_pos=x_stick_offset_position)
+
+    
+    
     
     #get inital recording x,y position
     initial_recording_pose = franka_robot.get_ee_pose()
@@ -237,7 +267,7 @@ def main():
         
         print(f" ************** repeat: {repeat}/{total_repeat_count} total repeats **************")
         print(f" ===== #3N. go to initial recording pose =====")
-        franka_robot.go_to_init_recording_pose(duration=10)
+        franka_robot.go_to_init_recording_pose(x_pos=x_stick_offset_position, y_pos=y_stick_offset_position, duration=3)
 
         for y_location_index, y_location_val in enumerate(y_location_list):
 
@@ -288,12 +318,13 @@ def main():
     # np.save(f"{save_path_data}recorded_q_trajectory.npy", recorded_q_trajectory, allow_pickle=True)
     # np.save(f"{save_path_data}recorded_ee_trajectory.npy", recorded_ee_trajectory, allow_pickle=True)
 
-        
-
-    
     #restore robot to initial position
-    print(f"restoring robot to initial cartesian position")
-    franka_robot.go_to_init_recording_pose()
+    print(f"restoring robot to initial joint position")
+    franka_robot.go_to_joint_position(robot_joints_restore_position, duration=10)
+
+    #move up z by 0.1m
+    franka_robot.move_delta_position(x=0, y=0, z=0.1)
+
     print(f"restoring robot to initial joint position")
     franka_robot.reset_joints()
         
