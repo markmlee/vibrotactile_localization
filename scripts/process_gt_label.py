@@ -2,18 +2,24 @@ import sys
 import os
 import numpy as np
 import time
-
+import matplotlib.pyplot as plt
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC_ranged'
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_UMC_fixed'
-# dataset_directory_angled = '/home/mark/audio_learning_project/data/franka_angled_UMC_full'
+dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite'
 
-# dataset_directory1 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal'
-# dataset_directory2 = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
-# dataset_directory3 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
-# dataset_directory4 = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
+dataset_directory1 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal'
+dataset_directory2 = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
+dataset_directory3 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
+dataset_directory4 = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
+dataset_directory5 = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
 
-dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_T12_T22_T32_L42_T22_L80_Horizontal_combined'
-dataset_directory_new = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
+dataset_directory6 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite'
+dataset_directory7 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
+
+
+
+# dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_T12_T22_T32_L42_T22_L80_Horizontal_combined'
+# dataset_directory_new = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
 
 def get_trials_from_directory(directory):
     """
@@ -30,7 +36,7 @@ def get_trials_from_directory(directory):
     
     return trial_dir
 
-def modify_gt_label(directory):
+def modify_gt_label_height_only(directory):
     """
     input: directory path
     offset the gt_label
@@ -61,14 +67,56 @@ def modify_gt_label(directory):
     print(f"Completed modifying gt_label for {directory}")
     sys.exit()
 
-def modify_gt_label_angled(directory):
+
+
+
+# Function to linearly map input values to output values
+def radian_map_opposite_stick_values(input_values):
+    # Input and output arrays
+    X = np.array([-2.7, -2.1, -1.5, -0.9, -0.3, 0.3, 0.9, 1.5, 2.1, 2.7])
+    Y = np.array([0.9, 1.5, 2.1, 2.7, np.pi, -2.7, -2.1, -1.5, -0.9, -0.3])
+
+    return np.interp(input_values, X, Y)
+
+def modify_gt_label_radian_only(directory):
+    """
+    input: directory path
+    offset the gt_label radian for the opposite stick label (offset by mapping value function)
+    """
+    #get all directory path to trials
+    trial_dir = sorted([os.path.join(directory, f) for f in os.listdir(directory)])
+
+    #filter out directory that does not start with 'trial'
+    trial_dir = [d for d in trial_dir if d.split('/')[-1].startswith('trial')]
+
+    len_data = len(trial_dir)
+
+    for trial_n in range(len_data):
+        gt_filename = f"{trial_dir[trial_n]}/gt_label.npy"
+        if not os.path.exists(gt_filename):
+            print(f"Error: {gt_filename} does not exist")
+        else:
+            gt_label_original = np.load(gt_filename)
+
+            #copy the original gt_label
+            gt_label_new = gt_label_original.copy()
+            gt_label_new[1] = radian_map_opposite_stick_values(gt_label_original[1]) 
+            
+            print(f"modified original to new gt_label {gt_label_original} to {gt_label_new}")
+            np.save(f"{trial_dir[trial_n]}/gt_label.npy", gt_label_new)
+
+    
+    print(f"Completed modifying gt_label for {directory}")
+    sys.exit()
+
+def modify_gt_label_height_radian_from_input_label(directory):
     """
     input: directory path that contains trials to modify and the new GT label
     offset the gt_label
     """
     
     #load new gt_label
-    new_gt_filename = f"{directory}/angled_full_label.npy"
+    new_gt_filename = f"{directory}/label.npy"
     new_gt_label = np.load(new_gt_filename, allow_pickle=True)
 
     len_new_gt_label = len(new_gt_label)
@@ -85,22 +133,25 @@ def modify_gt_label_angled(directory):
             #replace with previous gt_label
             new_gt_label_trial = new_gt_label[trial_n-1].copy()
 
-        new_gt_label_trial[0] = new_gt_label_trial[0] - 0.1015 #offset the gt_label
-        # print(f"new_gt_label_trial {new_gt_label_trial}")
+        #new_gt_label_trial[0] = new_gt_label_trial[0] - 0.1015 #offset the gt_label
 
+        
         #get old gt_label (from FK with error [range -0.1 to 0.1])
         #folder name
         trial_dir = f"{directory}/trial{trial_n}"
         gt_filename = f"{trial_dir}/gt_label.npy"
         gt_label_original = np.load(gt_filename, allow_pickle=True)
 
-        #modify the gt_label
+        #modify the gt_label with the new offset height and angle from new file
         gt_label_new = gt_label_original.copy()
         gt_label_new[0] = new_gt_label_trial[0]
+        gt_label_new[1] = new_gt_label_trial[1]
 
 
         #save the new gt_label
-        # print(f"modified original {gt_label_original} to new {gt_label_new}")
+        print(f"modified original height: {gt_label_original[0]:.2f}, angle: {gt_label_original[1]:.2f} --> to height: {gt_label_new[0]:.2f}, angle: {gt_label_new[1]:.2f} for trial {trial_n}")
+        
+        
         np.save(f"{trial_dir}/gt_label.npy", gt_label_new)
 
     print(f"Completed modifying gt_label for {directory}")
@@ -157,22 +208,78 @@ def combine_dataset(combine_dataset_directory_list, combined_dataset_name):
     print(f"Completed combining {trial_index_count} files into datasets  {combined_dataset_name}")
     sys.exit()
 
+def plot_height_radian(directory):
+    """
+    go through entire directory and get the height and radian
+    2D plot of height and radian 
+    """
+
+    #get all directory path to trials
+    trial_dir = sorted([os.path.join(directory, f) for f in os.listdir(directory)])
+
+    #filter out directory that does not start with 'trial'
+    trial_dir = [d for d in trial_dir if d.split('/')[-1].startswith('trial')]
+
+    len_data = len(trial_dir)
+
+    height_list = []
+    radian_list = []
+
+    # Create a colormap
+    cmap = plt.get_cmap('viridis')
+    
+    for trial_n in range(len_data):
+        gt_filename = f"{trial_dir[trial_n]}/gt_label.npy"
+        if not os.path.exists(gt_filename):
+            print(f"Error: {gt_filename} does not exist")
+        else:
+            gt_label = np.load(gt_filename)
+            height_list.append(gt_label[0])
+            radian_list.append(gt_label[1])
+
+            #every 5 trial, print out the height and radian for sanity check
+            if trial_n % 1 == 0:
+                #print height and radian up to 2 decimal places
+                print(f"height:{gt_label[0]:.2f}, radian: {gt_label[1]:.2f}, trial_n {trial_n}")
+                #sleep for 0.1 seconds
+                # time.sleep(0.1)
+
+    #plot the height and radian
+    plt.scatter(height_list, radian_list)
+    plt.xlabel('Height')
+    plt.ylabel('Radian')
+    plt.title('Height vs Radian')
+    plt.show()
+
+    sys.exit()
 
 
 def main():
 
     # ----------------------------- ONLY RUN ONCE WHEN MODIFYING GT_LABEL TO OFFSET -----------------------------
-    # modify_gt_label(dataset_directory)
-    # modify_gt_label_angled(dataset_directory_angled)
+    # modify_gt_label_height_only(dataset_directory)
+    # modify_gt_label_height_radian_from_input_label(dataset_directory_GT_modify)
+
+    # modify_gt_label_radian_only(dataset_directory_GT_modify)
     # --------------------------------------------------------------------------------------------------------------------
+
+
+
+    # ----------------------------- VISUALIZE THE GT LABELS FOR SANITY CHECK -----------------------------
+    # dir_to_visualize = dataset_directory6
+    # plot_height_radian(dir_to_visualize)
+
+
+
+
 
     # ----------------------------- ONLY RUN ONCE WHEN COMBINING DATASETS -----------------------------
 
     #iterate through all dataset directories and then combine into a single one
-    combine_dataset_directory_list = [dataset_directory_combined, dataset_directory_new]
-    # combine_dataset_directory_list = [dataset_directory1, dataset_directory2, dataset_directory3, dataset_directory4]
+    # combine_dataset_directory_list = [dataset_directory_combined, dataset_directory_new]
+    combine_dataset_directory_list = [dataset_directory1, dataset_directory2, dataset_directory3, dataset_directory4, dataset_directory5, dataset_directory6, dataset_directory7]
 
-    combined_dataset_name = '/home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined'
+    combined_dataset_name = '/home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_opposite_T12_T22_Horizontal_combinedv2'
 
     #make the combined dataset directory
     os.system(f"mkdir -p {combined_dataset_name}")

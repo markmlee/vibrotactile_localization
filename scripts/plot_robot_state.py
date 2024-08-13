@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
-from autolab_core import RigidTransform
+# from autolab_core import RigidTransform
 
 def plot_entire_state():
     load_file_x = '/home/iam-lab/audio_localization/vibrotactile_localization/data/franka_2D_localization/recorded_ee_pose.npy'
@@ -157,7 +157,44 @@ def plot_qt():
     #print shape of q_t, qd_t
     print(f"shapes: {recorded_q_trajectory[0][0].shape, recorded_q_trajectory[0][1].shape}") #--> ((32990, 7), (32990, 7)) ??? why not 40,000 since 200hz x 2 sec x 10 tirals
 
+def plot_single_trial():
+    """
+    load single trial and plot the x_t trajectory 
+    """
+    print(f" ----------------- plotting single trial -----------------")
+    load_x_file = '/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC_mini/trial0/x_t.npy'
+    recorded_x_trajectory = np.load(load_x_file, allow_pickle=True)
+
+    print(f"len of recorded_x_trajectory: {len(recorded_x_trajectory)}") #--> 10
+
+    #convert list to np
+    x_t = np.array(recorded_x_trajectory)
+    print(f"shape of x_t: {x_t.shape}") #--> (200,3)
+
+    #plot 3x1 subplot for x[0] vs t, x[1] vs t, x[2] vs t
+    t = np.arange(0, len(x_t), 1)
+    fig, axs = plt.subplots(3, 1)
+    fig.suptitle('Recorded trajectory for single tap')
+
+    axs[0].plot(t, x_t[:,0], label='x')
+    axs[1].plot(t, x_t[:,1], label='y')
+    axs[2].plot(t, x_t[:,2], label='z')
+
+    axs[0].set_ylim(0.05, 0.11)
+    axs[1].set_ylim(0.32, 0.38)
+    axs[2].set_ylim(0.42, 0.48)
+
+    #label axes
+    axs[0].set_ylabel('x(m)')
+    axs[1].set_ylabel('y(m)')
+    axs[2].set_ylabel('z(m)')
+    axs[2].set_xlabel('time (200 Hz)')
+    plt.show()
+
+
+
 
 # plot_xt()
 # plot_xdot_t_all_trials()
-plot_entire_state()
+# plot_entire_state()
+plot_single_trial()

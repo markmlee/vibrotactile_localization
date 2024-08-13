@@ -347,7 +347,7 @@ def plot_fft(waves, sample_rate, device_list):
                 ax.set_xlabel('Frequency (Hz)', color='black')
                 ax.set_ylabel('Magnitude', color='black')
                 ax.tick_params(colors='black')
-                ax.set_xlim(0, 1000)
+                ax.set_xlim(0, 2000)
             else:
                 ax.set_visible(False)
 
