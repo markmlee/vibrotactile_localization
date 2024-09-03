@@ -137,8 +137,8 @@ def publish_cross_easy(pub):
     marker.pose.orientation.z = 0
     marker.pose.orientation.w = 0.7071
     
-    marker.scale.x = 0.02  # Diameter in X (2 * radius)
-    marker.scale.y = 0.02  # Diameter in Y (2 * radius)
+    marker.scale.x = 0.015  # Diameter in X (2 * radius)
+    marker.scale.y = 0.015  # Diameter in Y (2 * radius)
     marker.scale.z = 0.74   # Height of the cylinder
 
     marker.color.a = 1.0
@@ -166,8 +166,8 @@ def publish_cross_easy(pub):
     marker.pose.orientation.z = 0
     marker.pose.orientation.w = 0.707
     
-    marker.scale.x = 0.02  # Diameter in X (2 * radius)
-    marker.scale.y = 0.02  # Diameter in Y (2 * radius)
+    marker.scale.x = 0.015  # Diameter in X (2 * radius)
+    marker.scale.y = 0.015  # Diameter in Y (2 * radius)
     marker.scale.z = 0.50   # Height of the cylinder
 
     marker.color.a = 1.0
