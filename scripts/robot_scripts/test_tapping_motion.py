@@ -300,11 +300,6 @@ def create_marker_and_publish_avg_pts(franka_robot, cur_contact_pt, total_trial_
     # pub_current_pt_markerarray.publish(same_pts_markerarray)
 
 
-
-    
-    
-
-
 def average_contact_pts(contact_pts_to_average):
     """
     given a list of contact points, average them to get a single contact point
@@ -432,8 +427,8 @@ def robot_hit_along_list(hitting_location_list, franka_robot, gt_label, cfg, pub
             total_trial_count += 1
 
             #saving the output prediction list using save_path_data
-            np.save(save_path_data + 'output_prediction_list.npy', output_prediction_list)
-            np.save(save_path_data + 'output_avg_prediction_list.npy', output_avg_prediction_list)
+            # np.save(save_path_data + 'output_prediction_list.npy', output_prediction_list)
+            # np.save(save_path_data + 'output_avg_prediction_list.npy', output_avg_prediction_list)
         
 
         
