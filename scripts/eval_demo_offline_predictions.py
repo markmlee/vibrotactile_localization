@@ -5,6 +5,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import open3d as o3d
 import pandas as pd
 import sys
+import imageio
 
 import copy
 import os
@@ -430,10 +431,7 @@ def visualize_robot_cylinder_stick(cylinders, cylinder_copy, robot, robot_joints
         # Add the wireframe to the visualizer
         vis.add_geometry(wire_frame)
 
-    # Apply the camera parameters
-    parameters = o3d.io.read_pinhole_camera_parameters("ScreenCamera_2024-09-25-17-10-45.json")
-    ctr.convert_from_pinhole_camera_parameters(parameters)
-
+    
     # Load collision object mesh
     collision_obj = o3d.io.read_triangle_mesh("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl")
     collision_obj.compute_vertex_normals()
@@ -455,7 +453,27 @@ def visualize_robot_cylinder_stick(cylinders, cylinder_copy, robot, robot_joints
     contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
     contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
     contact_pt.translate(np.array([contact_pt_transformed.x, contact_pt_transformed.y, contact_pt_transformed.z]))
+
     vis.add_geometry(contact_pt)
+
+    # Add coordinate frame
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    vis.add_geometry(coordinate_frame)
+
+
+    # Visualization for isometric view
+    ctr = vis.get_view_control()
+    
+    # Set camera parameters for isometric view
+    front = [-0.75, 2, 0.5]  # Looking from the first octant
+    up = [0.4, 0.15, 1.5]    # Up vector
+    lookat = [0, 0, 0.5]  # Looking at the middle of the robot (adjust as needed)
+    zoom = 1.0  # Adjust zoom level as needed
+    
+    ctr.set_front(front)
+    ctr.set_up(up)
+    ctr.set_lookat(lookat)
+    ctr.set_zoom(zoom)
 
     # Run the visualization
     vis.run()
