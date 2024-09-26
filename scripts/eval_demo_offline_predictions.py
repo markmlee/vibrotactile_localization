@@ -398,7 +398,7 @@ def visualize_robot_cylinder_stick(cylinders, cylinder_copy, robot, robot_joints
     ctr = vis.get_view_control()
 
     # Add the transformed cylinder
-    vis.add_geometry(cylinder_copy)
+    # vis.add_geometry(cylinder_copy)
 
     # Get the visual geometries for the robot
     visual_geometries = robot.visual_trimesh_fk(cfg={
@@ -482,6 +482,121 @@ def visualize_robot_cylinder_stick(cylinders, cylinder_copy, robot, robot_joints
     # return contact_pt_transformed
 
     
+def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot, robot_joints, cur_contact_pt, num_frames=30, save_gif=False):
+    """
+    Create a GIF of the robot visualization with varying viewpoints
+    """
+    # Define window dimensions
+    window_width = 800
+    window_height = 600
+
+    # Create an Open3D visualization window with explicit size
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(width=window_width, height=window_height)  # Make window invisible
+
+    # Add geometries to the visualizer
+    add_geometries_to_visualizer(vis, cylinder_copy, robot, robot_joints, cur_contact_pt)
+
+    # Base camera parameters
+    base_front = np.array([-0.75, 2, 0.5])
+    up = [0.4, 0.15, 1.5]
+    lookat = [0, 0, 0.5]
+    zoom = 1.0
+
+    if save_gif:
+        # Create directory for temporary images
+        if not os.path.exists(f"output/trial{trial_count}/temp_images"):
+            os.makedirs(f"output/trial{trial_count}/temp_images")
+
+        # Generate frames
+        for i in range(num_frames):
+            # Calculate rotation angle
+            angle = np.radians(60 * math.sin(2 * math.pi * i / num_frames))  # Varies between -30 and +30 degrees
+            
+            # Rotate front vector
+            rotation = R.from_rotvec(angle * np.array([0, 0, 1]))
+            rotated_front = rotation.apply(base_front)
+
+            # Set camera view
+            ctr = vis.get_view_control()
+            ctr.set_front(rotated_front)
+            ctr.set_up(up)
+            ctr.set_lookat(lookat)
+            ctr.set_zoom(zoom)
+
+            # Render and capture image
+            vis.poll_events()
+            vis.update_renderer()
+            vis.capture_screen_image(f"output/trial{trial_count}/temp_images/frame_{i:03d}.png")
+
+        vis.destroy_window()
+
+        # Create GIF
+        with imageio.get_writer(f"output/trial{trial_count}.gif", mode='I', duration=0.1) as writer:
+            for i in range(num_frames):
+                image = imageio.imread(f"output/trial{trial_count}/temp_images/frame_{i:03d}.png")
+                writer.append_data(image)
+
+        # # Clean up temporary images
+        # for i in range(num_frames):
+        #     os.remove(f"temp_images/frame_{i:03d}.png")
+        # os.rmdir("temp_images")
+
+        print("GIF created: robot_visualization.gif")
+
+    else:
+        # Set camera view
+        ctr = vis.get_view_control()
+        ctr.set_front(base_front)
+        ctr.set_up(up)
+        ctr.set_lookat(lookat)
+        ctr.set_zoom(zoom)
+
+        # Run the visualization
+        vis.run()
+        vis.destroy_window()
+
+def add_geometries_to_visualizer(vis, cylinder_copy, robot, robot_joints, cur_contact_pt):
+    # Add the transformed cylinder
+    vis.add_geometry(cylinder_copy)
+
+    # Get the visual geometries for the robot
+    visual_geometries = robot.visual_trimesh_fk(cfg={
+        f'panda_joint{i+1}': robot_joints[i] for i in range(7)
+    })
+
+    # Add the robot to the visualizer as wireframe
+    for trimesh_obj, transform in visual_geometries.items():
+        o3d_mesh = o3d.geometry.TriangleMesh()
+        o3d_mesh.vertices = o3d.utility.Vector3dVector(np.asarray(trimesh_obj.vertices))
+        o3d_mesh.triangles = o3d.utility.Vector3iVector(np.asarray(trimesh_obj.faces))
+        o3d_mesh.transform(transform)
+        
+        wire_frame = o3d.geometry.LineSet.create_from_triangle_mesh(o3d_mesh)
+        wire_frame.paint_uniform_color([0.8, 0.8, 0.8])  # Light gray color
+        vis.add_geometry(wire_frame)
+
+    # Load and add collision object
+    collision_obj = o3d.io.read_triangle_mesh("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl")
+    collision_obj.compute_vertex_normals()
+    r = R.from_quat([0.7071, 0, 0, 0.7071])
+    rz = R.from_euler('z', 2, degrees=True)
+    T_object = np.eye(4)
+    T_object[:3,:3] = rz.as_matrix()@r.as_matrix()
+    T_object[0:3,3] = [-0.0126,0.496,0.31]
+    collision_obj.transform(T_object)
+    vis.add_geometry(collision_obj)
+
+    # Add the contact point
+    contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
+    contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
+    contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
+    contact_pt.translate(np.array([contact_pt_transformed.x, contact_pt_transformed.y, contact_pt_transformed.z]))
+    vis.add_geometry(contact_pt)
+
+    # Add coordinate frame
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    vis.add_geometry(coordinate_frame)
 
 
 @hydra.main(version_base='1.3',config_path='../learning/configs', config_name = 'inference')
@@ -512,13 +627,13 @@ def main(cfg: DictConfig):
     cur_contact_pt_list = []
     ###transform the output to robot baselink frame###
     #post process XY -> radian -> XY (to ensure projection is on the unit circle) AND (resolve wrap around issues) 
-    for i in range(total_trials):
-        cur_contact_pt = transform_predicted_XYZ_to_EE_XYZ(x_pred[i], y_pred[i],height_pred[i], cfg.cylinder_radius, cfg.cylinder_transform_offset)
+    for trial_count in range(total_trials):
+        cur_contact_pt = transform_predicted_XYZ_to_EE_XYZ(x_pred[trial_count], y_pred[trial_count],height_pred[trial_count], cfg.cylinder_radius, cfg.cylinder_transform_offset)
         print(f"cur_contact_pt: {cur_contact_pt}")
         cur_contact_pt_list.append(cur_contact_pt)
 
         # ---------------- load the robot state from the trial directory ----------------
-        trial_dir = cfg.data_dir + '/trial' + str(i)
+        trial_dir = cfg.data_dir + '/trial' + str(trial_count)
         ee_pose, robot_joints = get_arm_pose_from_robotstate(trial_dir, robot)
         
         #transform the cylinder to the EE pose
@@ -527,8 +642,10 @@ def main(cfg: DictConfig):
         cylinder_verts = np.asarray(cylinder_copy.vertices)
         cylinder_colors  = np.asarray(cylinder_copy.vertex_colors)
 
-        transformed_contact_pt = visualize_robot_cylinder_stick(cylinder, cylinder_copy, robot, robot_joints, cur_contact_pt)
-        print(f"transformed_contact_pt: {transformed_contact_pt}")
+        # transformed_contact_pt = visualize_robot_cylinder_stick(cylinder, cylinder_copy, robot, robot_joints, cur_contact_pt)
+        create_robot_visualization_gif(trial_count, cylinder, cylinder_copy, robot, robot_joints, cur_contact_pt, save_gif=True)
+
+        # print(f"transformed_contact_pt: {transformed_contact_pt}")
         # --------------------------------------------------------------------------------
 
 
