@@ -356,14 +356,14 @@ def convert_contactpt_to_global(cur_contact_pt, robot, robot_joints):
     # Step 4: Convert cur_contact_pt to homogeneous coordinates
     contact_pt_cylinder = np.array([cur_contact_pt.x, cur_contact_pt.y, cur_contact_pt.z, 1])
 
-    print(f"T_link1_cylinder : {T_link1_cylinder}")
-    print(f"contact_pt_cylinder: {contact_pt_cylinder}")
+    # print(f"T_link1_cylinder : {T_link1_cylinder}")
+    # print(f"contact_pt_cylinder: {contact_pt_cylinder}")
     
 
     # Step 5: Transform the point
     contact_pt_link1 = T_link1_cylinder @ contact_pt_cylinder
 
-    print(f"contact_pt_link1: {contact_pt_link1}")
+    # print(f"contact_pt_link1: {contact_pt_link1}")
 
     # Step 6: Convert back to Point message
     contact_pt_global = Point()
@@ -376,64 +376,18 @@ def convert_contactpt_to_global(cur_contact_pt, robot, robot_joints):
     contact_pt_global.z = contact_pt_link1[2]
 
 
-    print(f"contact_pt_global: {contact_pt_global}")
-    print(f"x: {contact_pt_global.x}, y: {contact_pt_global.y}, z: {contact_pt_global.z}")
+    # print(f"contact_pt_global: {contact_pt_global}")
+    # print(f"x: {contact_pt_global.x}, y: {contact_pt_global.y}, z: {contact_pt_global.z}")
 
     return contact_pt_global
 
-def visualize_robot_cylinder_stick(cylinders, cylinder_copy, robot, robot_joints, cur_contact_pt):
+
+def get_stick_cylinder(path_to_stl):
     """
-    Visualize the robot as a wireframe and cylinder in open3d
-    Cylinder is the end-effector that has been transformed to the robot hand pose
+    For loading the single stick cylinder mesh
     """
-    # Define window dimensions
-    window_width = 800
-    window_height = 600
-
-    # Create an Open3D visualization window with explicit size
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(width=window_width, height=window_height)
-
-    # Set up the camera for an isometric view
-    ctr = vis.get_view_control()
-
-    # Add the transformed cylinder
-    # vis.add_geometry(cylinder_copy)
-
-    # Get the visual geometries for the robot
-    visual_geometries = robot.visual_trimesh_fk(cfg={
-        'panda_joint1': robot_joints[0],
-        'panda_joint2': robot_joints[1],
-        'panda_joint3': robot_joints[2],
-        'panda_joint4': robot_joints[3],
-        'panda_joint5': robot_joints[4],
-        'panda_joint6': robot_joints[5],
-        'panda_joint7': robot_joints[6],
-    })
-
-    # Add the robot to the visualizer as wireframe
-    for trimesh_obj, transform in visual_geometries.items():
-        # Convert trimesh to Open3D mesh
-        vertices = np.asarray(trimesh_obj.vertices)
-        triangles = np.asarray(trimesh_obj.faces)
-        
-        o3d_mesh = o3d.geometry.TriangleMesh()
-        o3d_mesh.vertices = o3d.utility.Vector3dVector(vertices)
-        o3d_mesh.triangles = o3d.utility.Vector3iVector(triangles)
-        
-        # Apply the transformation
-        o3d_mesh.transform(transform)
-        
-        # Create wireframe from the mesh
-        wire_frame = o3d.geometry.LineSet.create_from_triangle_mesh(o3d_mesh)
-        wire_frame.paint_uniform_color([0.8, 0.8, 0.8])  # Light gray color
-        
-        # Add the wireframe to the visualizer
-        vis.add_geometry(wire_frame)
-
-    
     # Load collision object mesh
-    collision_obj = o3d.io.read_triangle_mesh("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl")
+    collision_obj = o3d.io.read_triangle_mesh(path_to_stl)
     collision_obj.compute_vertex_normals()
     r = R.from_quat([0.7071, 0, 0, 0.7071])
     rz = R.from_euler('z', 2, degrees=True)
@@ -442,44 +396,46 @@ def visualize_robot_cylinder_stick(cylinders, cylinder_copy, robot, robot_joints
     T_object[0:3,3] = [-0.0126,0.496,0.31]
     collision_obj.transform(T_object)
 
-    # Add the collision object to the visualizer
-    vis.add_geometry(collision_obj)
-
-    # Add the contact point
-    contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
-    print(f"contact_pt_transformed: {contact_pt_transformed}")
-
-    # Add the contact point to the visualizer
-    contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
-    contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
-    contact_pt.translate(np.array([contact_pt_transformed.x, contact_pt_transformed.y, contact_pt_transformed.z]))
-
-    vis.add_geometry(contact_pt)
-
-    # Add coordinate frame
-    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-    vis.add_geometry(coordinate_frame)
+    return collision_obj
 
 
-    # Visualization for isometric view
-    ctr = vis.get_view_control()
-    
-    # Set camera parameters for isometric view
-    front = [-0.75, 2, 0.5]  # Looking from the first octant
-    up = [0.4, 0.15, 1.5]    # Up vector
-    lookat = [0, 0, 0.5]  # Looking at the middle of the robot (adjust as needed)
-    zoom = 1.0  # Adjust zoom level as needed
-    
-    ctr.set_front(front)
-    ctr.set_up(up)
-    ctr.set_lookat(lookat)
-    ctr.set_zoom(zoom)
+def manual_transformation_from_predetermined_transformation():
+    """
+    Have predetermined the transformation matrix from determine_transformation_from_scanned_obj()
 
-    # Run the visualization
-    vis.run()
-    vis.destroy_window()
+    """
 
-    # return contact_pt_transformed
+    transformation_final = np.array([
+    [-0.7760436,   0.62971646,  0.03483545, -0.02671042],
+    [-0.04891869, -0.00503359, -0.99879008,  0.70680278],
+    [-0.62877921, -0.77680875,  0.03471119,  1.65692942],
+    [ 0,           0,           0,           1]
+])
+    return transformation_final
+
+def get_pcloud_cross(path_to_pts):
+
+    # Load point cloud data
+    df = pd.read_csv(path_to_pts, sep=r'\s+', header=None, comment='#', skiprows=1)
+
+    # Convert to numpy array
+    gt_pointcloud = df.values
+
+    # Ensure the point cloud is of type float64 or float32
+    gt_pointcloud = gt_pointcloud.astype(np.float64)  # or np.float32
+
+    print(f"gt_pointcloud shape: {gt_pointcloud.shape}")
+
+    # Create Open3D PointCloud object
+    pcd_ground_truth = o3d.geometry.PointCloud()
+    pcd_ground_truth.points = o3d.utility.Vector3dVector(gt_pointcloud[:, :3])
+
+    # Get pre-determined transformation of scanned object to rough alignment with prediction coordinate system
+    transformation_final =  manual_transformation_from_predetermined_transformation()
+    # Transform the ground truth point cloud to the prediction coordinate system
+    pcd_ground_truth.transform(transformation_final)
+
+    return pcd_ground_truth
 
     
 def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot, robot_joints, cur_contact_pt, num_frames=30, save_gif=False):
@@ -501,7 +457,7 @@ def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot,
     base_front = np.array([-0.75, 2, 0.5])
     up = [0.4, 0.15, 1.5]
     lookat = [0, 0, 0.5]
-    zoom = 1.0
+    zoom = 0.85
 
     if save_gif:
         # Create directory for temporary images
@@ -576,16 +532,14 @@ def add_geometries_to_visualizer(vis, cylinder_copy, robot, robot_joints, cur_co
         wire_frame.paint_uniform_color([0.8, 0.8, 0.8])  # Light gray color
         vis.add_geometry(wire_frame)
 
-    # Load and add collision object
-    collision_obj = o3d.io.read_triangle_mesh("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl")
-    collision_obj.compute_vertex_normals()
-    r = R.from_quat([0.7071, 0, 0, 0.7071])
-    rz = R.from_euler('z', 2, degrees=True)
-    T_object = np.eye(4)
-    T_object[:3,:3] = rz.as_matrix()@r.as_matrix()
-    T_object[0:3,3] = [-0.0126,0.496,0.31]
-    collision_obj.transform(T_object)
+    # Add the collision object to the visualizer
+    # collision_obj = get_stick_cylinder("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl") #FOR STICK SIMPLE CASE
+    gt_pointcloud_path = '/home/mark/audio_learning_project/evaluation/3D_scan_GT'
+    gt_pointcloud_file = os.path.join(gt_pointcloud_path, 'OBJECT 1A cross.pts')
+    collision_obj = get_pcloud_cross(gt_pointcloud_file)
+
     vis.add_geometry(collision_obj)
+
 
     # Add the contact point
     contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
