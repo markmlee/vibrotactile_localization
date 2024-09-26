@@ -26,11 +26,12 @@ fs = 44100
 
 record_duration = 2 #seconds for audio, trajectory recording
 wait_duration = record_duration
-distance_sample_count = 3 #5 (only) 20 number of samples to take along the height (1cm res)
+distance_sample_count = 5 #5 (only) 20 number of samples to take along the height (1cm res)
 radian_sample_count = 10  #10 number of samples to take along the radian (300 degrees/10 = 30 degrees res)
-total_repeat_count = 1 #3 number of times to repeat the 2D motion (3 times)
-y_location_sample_count = 1
+total_repeat_count = 2 #3 number of times to repeat the 2D motion (3 times)
+y_location_sample_count = 3
 
+#--> should get total number of 1200 trials (5x10x2x3 = 300)
 #--> should get total number of 1200 trials (10x10x3x4 = 1200)
 #--> should get total number of 2400 trials (20x10x3x4 = 2400)
 
@@ -51,19 +52,19 @@ if HIT_AT_ANGLE:
 total_trial_count = 0 
 y_location_min, y_location_max = 0.25, 0.35 #0.25, 0.38 #meters along the y-axis to traverse from robot base
 y_location_list = np.linspace(y_location_min, y_location_max, y_location_sample_count)
+y_stick_offset_position = 0.40
 
-
-save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/find_offset_GT/"
+save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/wood_T32_L42_Horizontal_v2/"
 
 RADIAN_HARDCODE_EVAL = True #TODO ****************** CHANGE HERE ************************
-LATERAL_HIT_MOTION = True #TODO ****************** CHANGE HERE ************************
+LATERAL_HIT_MOTION = False #TODO ****************** CHANGE HERE ************************
 
 #radian angle in 5 evenly spaced intervals from [-2.8 to 2.8]
 radian_along_cylinder = np.linspace(j7_radian_min, j7_radian_max, radian_sample_count)
 if RADIAN_HARDCODE_EVAL:
-    y_stick_offset_position = 0.34
+    y_stick_offset_position = 0.40
     y_location_min, y_location_max = y_stick_offset_position,y_stick_offset_position #0.25, 0.38 meters along the y-axis to traverse from robot base
-    save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/test_generalization/cross_easy_X_15_Left/"
+    save_path_data = "/home/iam-lab/audio_localization/vibrotactile_localization/data/test_generalization/stick_T22L42_Y_40_w_suctionv5/"
 
     if LATERAL_HIT_MOTION:
         x_stick_offset_position = 0.15

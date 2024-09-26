@@ -9,15 +9,52 @@ from autolab_core import RigidTransform
 #ros
 import rospy
 import tf
+from geometry_msgs.msg import Point, PoseStamped
+import tf2_ros
+# import tf2_geometry_msgs
+
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
+from geometry_msgs.msg import Quaternion, TransformStamped
 
 import os
+
+
+class MarkerBroadcaster:
+    def __init__(self):
+        self.br = tf2_ros.StaticTransformBroadcaster()
+
+    def broadcast_marker_tf(self, marker):
+        # Create a TransformStamped message
+        t = TransformStamped()
+
+        # Fill in the header
+        t.header.stamp = rospy.Time.now()
+        t.header.frame_id = marker.header.frame_id
+
+        # Set the child frame id
+        t.child_frame_id = f"marker_{marker.id}"
+
+        # Set the translation
+        t.transform.translation.x = marker.pose.position.x
+        t.transform.translation.y = marker.pose.position.y
+        t.transform.translation.z = marker.pose.position.z
+
+        # Set the rotation
+        t.transform.rotation.x = marker.pose.orientation.x
+        t.transform.rotation.y = marker.pose.orientation.y
+        t.transform.rotation.z = marker.pose.orientation.z
+        t.transform.rotation.w = marker.pose.orientation.w
+
+        # Broadcast the static transform
+        self.br.sendTransform(t)
+
 # class for motion
 class FrankaMotion:
     def __init__(self):
         print(f"initializing franka")
         self.franka = FrankaArm(with_gripper=False)
+        self.marker_broadcaster = MarkerBroadcaster()
     #     signal.signal(signal.SIGINT, self.signal_handler)
         
     # def signal_handler(self,sig, frame):
@@ -46,12 +83,12 @@ class FrankaMotion:
         init_joints = [1.5278832804517326, -0.784425808546836, 0.2584350609981322, -2.004073806227294, 0.19481513745590165, 1.2958232133057626, 0.8416399667163692]
         self.franka.goto_joints(init_joints, duration=10, ignore_virtual_walls=True)
 
-    def go_to_init_recording_pose(self, x_pos = 0.10, y_pos = 0.35, duration=10):
+    def go_to_init_recording_pose(self, x_pos = 0.10, y_pos = 0.33, duration=10):
         print(f"go to init recording pose")
 
         #set goal pose to be [T: 0.475, 0.05, 0.7], [R: 0,0.707,0,0.707] 
         init_record_pose = RigidTransform(
-            translation=np.array([x_pos, y_pos, 0.57]), #0.05 offset added for safety when restoring this init position
+            translation=np.array([x_pos, y_pos, 0.56]), #0.05 offset added for safety when restoring this init position
             rotation= RigidTransform.rotation_from_quaternion([0,0.707,707,0]),
             from_frame='franka_tool', to_frame='world')
 
@@ -112,10 +149,10 @@ class FrankaMotion:
 
        
 
-    def rotate_j7(self, j7_radian):
+    def rotate_j7(self, j7_radian, duration=10):
         joints = self.franka.get_joints()
         joints[6] = j7_radian
-        self.franka.goto_joints(joints, duration=10, ignore_virtual_walls=True)
+        self.franka.goto_joints(joints, duration=duration, ignore_virtual_walls=True)
 
     def rotate_ee_orientation(self, tap_angle=20):
         """
@@ -276,7 +313,40 @@ class FrankaMotion:
 
 
         np.save(f"{save_folder_path}predicted_output_HeightRad.npy", [height, rad])
-        
+
+
+    def save_prediction_global(self, total_trial_count, save_dir):
+        """
+        lookup predicted contact points via ID (trial count) w.r.t to global frame
+        save
+        """
+        #TF lookup for marker to global frame (marker "0" to "panda_link0")
+        # print(f"TF lookup for marker to global frame")
+        listener = tf.TransformListener()
+
+        # Wait for the frame to be available
+        target_frame = "panda_link0"
+        #convert total_trial_count to string
+        marker_id_frame = "marker_" + str(total_trial_count) 
+
+        listener.waitForTransform(target_frame, marker_id_frame, rospy.Time(0), rospy.Duration(4.0))
+        # Get the transformation
+        (trans, rot) = listener.lookupTransform(target_frame, marker_id_frame, rospy.Time(0))
+
+        # print(f"transformation from {marker_id_frame} to {target_frame}. trans: {trans} ")
+
+        #save the transformation
+        save_folder_path = f"{save_dir}trial{total_trial_count}/"
+        os.makedirs(save_folder_path, exist_ok=True)
+
+        #convert trans which is in list to array
+        trans_list = np.array(trans)
+
+        print(f"trans_list: {trans_list}")
+
+        np.save(f"{save_folder_path}predicted_pt.npy", trans_list)
+
+            
     def xy_to_radians(self, x, y):
         """
         Convert x,y into radians from 0 to 2pi
@@ -340,13 +410,10 @@ class FrankaMotion:
         return transformed_point
     
     
-    def create_marker(self, id, contact_pt, scale_xyz_list, color_argb_list, lifetime=2):
+    def create_marker(self, id, contact_pt, scale_xyz_list, color_argb_list, lifetime=2, frame_id='cylinder_origin'):
         # Create a marker
-        """
-        input: Point XYZ rosmsg
-        """
         marker = Marker()
-        marker.header.frame_id = "cylinder_origin"
+        marker.header.frame_id = frame_id
         marker.header.stamp = rospy.Time.now()
         marker.ns = "contact_point"
         marker.id = id
@@ -355,22 +422,75 @@ class FrankaMotion:
         marker.pose.position.x = contact_pt.x
         marker.pose.position.y = contact_pt.y
         marker.pose.position.z = contact_pt.z
-        marker.pose.orientation.x = 0.0
-        marker.pose.orientation.y = 0.0
-        marker.pose.orientation.z = 0.0
-        marker.pose.orientation.w = 1.0
+        marker.pose.orientation = Quaternion(0.0, 0.0, 0.0, 1.0)
+
         marker.scale.x = scale_xyz_list[0]
-        marker.scale.y =  scale_xyz_list[1]
-        marker.scale.z =  scale_xyz_list[2]
-        marker.color.a = color_argb_list[0] 
+        marker.scale.y = scale_xyz_list[1]
+        marker.scale.z = scale_xyz_list[2]
+        marker.color.a = color_argb_list[0]
         marker.color.r = color_argb_list[1]
-        marker.color.g = color_argb_list[2] 
-        marker.color.b = color_argb_list[3] 
+        marker.color.g = color_argb_list[2]
+        marker.color.b = color_argb_list[3]
 
         marker.lifetime = rospy.Duration(lifetime)
 
-        return marker
+        # Broadcast the marker's transformation
+        self.marker_broadcaster.broadcast_marker_tf(marker)
 
+        return marker
+    
+    def average_markerarray(self, marker_array):
+        """
+        input: marker array
+        output: averaged point in the 'panda_link0' frame
+        """
+        transformed_points = []
+        tf_listener = tf.TransformListener()
+
+        for marker in marker_array.markers:
+            try:
+                tf_listener.waitForTransform('panda_link0', marker.header.frame_id, rospy.Time(0), rospy.Duration(1.0))
+                (trans, rot) = tf_listener.lookupTransform('panda_link0', marker.header.frame_id, rospy.Time(0))
+                
+                # Inside the try block, after obtaining trans and rot
+                marker_point = marker.pose.position  # Assuming the marker's position is what you want to transform
+
+                # Convert quaternion to rotation matrix
+                quaternion = [rot[0], rot[1], rot[2], rot[3]]
+                rotation_matrix = tf.transformations.quaternion_matrix(quaternion)
+
+                # Apply the transformation
+                transformed_point_vector = np.dot(rotation_matrix, np.array([marker_point.x, marker_point.y, marker_point.z, 1]))
+
+                # Update transformed_point with the transformed coordinates
+                transformed_point = Point()
+                transformed_point.x = transformed_point_vector[0] + trans[0]
+                transformed_point.y = transformed_point_vector[1] + trans[1]
+                transformed_point.z = transformed_point_vector[2] + trans[2]
+                print(f"transformed_point: {transformed_point}")
+
+                transformed_points.append(transformed_point)
+            except (tf.Exception, tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException) as e:
+                rospy.logerr(f"Transform error: {e}")
+                return None
+
+
+        # Calculate the average position
+        total_x = sum(point.x for point in transformed_points)
+        total_y = sum(point.y for point in transformed_points)
+        total_z = sum(point.z for point in transformed_points)
+        count = len(transformed_points)
+        print(f"total_x: {total_x}, total_y: {total_y}, total_z: {total_z}, count: {count}")
+
+        avg_x = total_x / count
+        avg_y = total_y / count
+        avg_z = total_z / count
+
+        print(f"avg_x: {avg_x}, avg_y: {avg_y}, avg_z: {avg_z}")
+        # Create a Point with the averaged coordinates
+        avg_point = Point(avg_x, avg_y, avg_z)
+        
+        return avg_point, transformed_points
 
         
 
