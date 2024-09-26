@@ -28,16 +28,19 @@ def load_gt_pointcloud(dir_path):
 
 def visualize_two_pointclouds(pcd_prediction, pcd_ground_truth):
     #visualize two pointclouds
+
+    voxel_size = 0.02
+    pcd_ground_truth_downsampled = pcd_ground_truth.voxel_down_sample(voxel_size)
     
     # Color the point clouds
-    pcd_ground_truth.paint_uniform_color([0, 0, 1])  # Blue
-    pcd_prediction.paint_uniform_color([1, 0, 0])    # Red
+    pcd_prediction.paint_uniform_color([0, 0, 1])  # Blue
+    pcd_ground_truth_downsampled.paint_uniform_color([1, 0, 0])# Red
 
     # Create a coordinate frame at the origin
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
 
     # Visualize the point clouds together
-    o3d.visualization.draw_geometries([coordinate_frame, pcd_ground_truth, pcd_prediction])
+    o3d.visualization.draw_geometries([coordinate_frame, pcd_ground_truth_downsampled, pcd_prediction])
 
 
 
@@ -276,6 +279,32 @@ def compute_chamfer_distance(source, target):
     
     return chamfer_distance 
 
+def compute_chamfer_distance_singleway(source, target):
+    # Convert point clouds to numpy arrays
+    source_points = np.asarray(source.points)
+    target_points = np.asarray(target.points)
+    
+    # Build KD-Trees for efficient nearest neighbor search
+    source_tree = cKDTree(source_points)
+    target_tree = cKDTree(target_points)
+    
+    # Compute distance from source to target
+    distances_source_to_target, _ = target_tree.query(source_points, k=1)
+    chamfer_dist_source_to_target = np.mean(np.square(distances_source_to_target))
+
+
+    # Compute distance from target to source
+    distances_target_to_source, _ = source_tree.query(target_points, k=1)
+    chamfer_dist_target_to_source = np.mean(np.square(distances_target_to_source))
+    
+ 
+    # Chamfer distance is the sum of both directions
+    chamfer_distance = chamfer_dist_source_to_target #####+ chamfer_dist_target_to_source
+    chamfer_distance = np.sqrt(chamfer_distance) ###ADDED SQRT to look at distance only (unit in meters)
+    
+    return chamfer_distance 
+
+
 def compute_hausdorff_distance(source, target):
     # Convert point clouds to numpy arrays
     source_points = np.asarray(source.points)
@@ -427,6 +456,7 @@ def main():
     # -------------- SINGLE USE! for appending predictions from multiple trials --------------
     # num_trial_predictions = 32
     # append_trial_predictions_to_file(prediction_path, num_trial_predictions)
+    # sys.exit()
     # ---------------------------------------------------------------------------
 
     prediction_file = os.path.join(prediction_path, 'contact_pts.npy')
@@ -448,7 +478,7 @@ def main():
 
     # load a manual measurement of the cross in 3D space
     manual_points = load_manual_measure_of_cross()
-    predictions_pointcloud = manual_points #use manual points for now
+    # predictions_pointcloud = manual_points #use manual points for now
 
     print(f"predictions_pointcloud shape: {predictions_pointcloud.shape}, gt_pointcloud shape: {gt_pointcloud.shape}")
 
@@ -473,10 +503,10 @@ def main():
     # fine tune the transformation using ICP
     transformation_matrix, pcd_ground_truth_transformed = get_transformation_ICP(pcd_prediction, pcd_ground_truth_copy)
 
-    # visualize_two_pointclouds(pcd_prediction, pcd_ground_truth_transformed)
+    visualize_two_pointclouds(pcd_prediction, pcd_ground_truth_transformed)
 
     # Compute Chamfer Distance
-    chamfer_distance = compute_chamfer_distance(pcd_prediction, pcd_ground_truth_transformed)
+    chamfer_distance = compute_chamfer_distance_singleway(pcd_prediction, pcd_ground_truth_transformed)
  
     print(f"Chamfer Distance: {chamfer_distance}")
     

@@ -60,7 +60,7 @@ def load_prediction_ground_truth_pointclouds():
     return pcd_prediction, pcd_ground_truth_transformed
 
 
-def get_points_in_plane(pcd_ground_truth_transformed, num_points=100):
+def get_points_in_plane(pcd_ground_truth_transformed, num_points=200):
     """
     Uniformly sample points along the 2D Z plane of the object. Can assume Z = 0.315m.
     upper-left p1 = (-0.5, 0.0, 0.315)
@@ -70,8 +70,8 @@ def get_points_in_plane(pcd_ground_truth_transformed, num_points=100):
     """
     
     # Define the boundaries of the plane
-    x_min, y_min = -0.5, 0.0
-    x_max, y_max = 0.5, 0.75
+    x_min, y_min = -0.30, 0.1
+    x_max, y_max = 0.30, 0.6
     z = 0.315
     
     # Calculate the number of points in each dimension
@@ -91,7 +91,7 @@ def get_points_in_plane(pcd_ground_truth_transformed, num_points=100):
     
     return pcd_sampled
 
-def get_points_inplane_nocollision(sampled_points_in_plane, pcd_ground_truth_transformed, radius=0.055, buffer_multiplier=1.25):
+def get_points_inplane_nocollision(sampled_points_in_plane, pcd_ground_truth_transformed, radius=0.055, buffer_multiplier=1.3):
     """
     Given the sampled points in the plane, filter out the points that are too close to the object surface.
     Compute the closest distance from each point to the object surface, and remove the points that are too close.
@@ -146,6 +146,7 @@ def get_points_inplane_nocollision_closest(sampled_points_filtered_close, pcd_gr
     # Define a threshold based on the mean and standard deviation
     # Points within this threshold will be considered as the "closest layer"
     threshold = mean_distance - 0.5 * std_distance
+    threshold = 0.1
 
     # Create a boolean mask for points that are within the threshold
     mask = distances <= threshold
@@ -175,6 +176,30 @@ def save_sampled_points(sampled_points_filtered_closest_layer):
     #print current absolute directory path of saved file
     print(f"Saved sampled points to: {os.path.abspath('sampled_points.npy')}")
 
+def get_points_inplane_nocollision_closest_validrobot(sampled_points_filtered_closest_layer, pcd_ground_truth_transformed):
+    """
+    filter out points that are not valid for the robot to reach.
+    Heuristic: in XY plane, x[-0.25, +0.25] y[+0.2, +0.55]
+    """
+
+    # Define the boundaries of the valid robot workspace
+    x_min, x_max = -0.22, 0.22
+    y_min, y_max = 0.2, 0.55
+
+    # Convert Open3D PointCloud objects to numpy arrays
+    sampled_array = np.asarray(sampled_points_filtered_closest_layer.points)
+
+    # Create a boolean mask for points that are within the valid robot workspace
+    mask = (sampled_array[:, 0] >= x_min) & (sampled_array[:, 0] <= x_max) & (sampled_array[:, 1] >= y_min) & (sampled_array[:, 1] <= y_max)
+
+    # Filter the points
+    filtered_points = sampled_array[mask]
+
+    # Create a new Open3D PointCloud object with the filtered points
+    sampled_points_filtered_closest_layer_validrobot = o3d.geometry.PointCloud()
+    sampled_points_filtered_closest_layer_validrobot.points = o3d.utility.Vector3dVector(filtered_points)
+
+    return sampled_points_filtered_closest_layer_validrobot
 
 def main():
     # -------------------------------------------------------
@@ -182,30 +207,48 @@ def main():
 
     pcd_prediction, pcd_ground_truth_transformed = load_prediction_ground_truth_pointclouds()
 
-    VISUALIZE = False
+    VISUALIZE = True
 
     if VISUALIZE: visualize_two_pointclouds(pcd_prediction, pcd_ground_truth_transformed)
 
     # uniformly sample points along the Z plane of the object
-    sampled_points_in_plane = get_points_in_plane(pcd_ground_truth_transformed)
+    sampled_points_in_plane = get_points_in_plane(pcd_ground_truth_transformed, 500)
+    print(f"Init sampled pts: {len(sampled_points_in_plane.points)}")
 
     #visualize the sampled points
     if VISUALIZE: visualize_two_pointclouds(sampled_points_in_plane, pcd_ground_truth_transformed)
 
     # Filter out the points that are too close to the object surface (using diameter of the end-effector tube)
     sampled_points_filtered_close = get_points_inplane_nocollision(sampled_points_in_plane, pcd_ground_truth_transformed)
+    print(f"Removed collision. Remaining: {len(sampled_points_filtered_close.points)}")
 
     #visualize the sampled points
     if VISUALIZE: visualize_two_pointclouds(sampled_points_filtered_close, pcd_ground_truth_transformed)
 
     # Filter out the points so that only the closest layer of points are remaining (similar to thresholding by signed distance function values)
     sampled_points_filtered_closest_layer = get_points_inplane_nocollision_closest(sampled_points_filtered_close, pcd_ground_truth_transformed)
+    print(f"Got closest. Remaining: {len(sampled_points_filtered_closest_layer.points)}")
 
     # visualize the remaining points with GT point cloud
     if VISUALIZE: visualize_two_pointclouds(sampled_points_filtered_closest_layer, pcd_ground_truth_transformed)
 
+    # Filter out the points so that only the closest layer of points are remaining (similar to thresholding by signed distance function values)
+    sampled_points_filtered_closest_layer_validrobot = get_points_inplane_nocollision_closest_validrobot(sampled_points_filtered_closest_layer, pcd_ground_truth_transformed)
+    print(f"Removed robot range. Remaining: {len(sampled_points_filtered_closest_layer_validrobot.points)}")
+    
+    # visualize the remaining points with GT point cloud
+    if VISUALIZE: visualize_two_pointclouds(sampled_points_filtered_closest_layer_validrobot, pcd_ground_truth_transformed)
+
+    #downsample points sampled_points_filtered_closest_layer_validrobot to be more efficient
+    #sampled_points_filtered_closest_layer_validrobot = sampled_points_filtered_closest_layer_validrobot.voxel_down_sample(voxel_size=0.05)
+    #print(f"Downsampled to {len(sampled_points_filtered_closest_layer_validrobot.points)}")
+
+    # visualize the remaining points with GT point cloud
+    #if VISUALIZE: visualize_two_pointclouds(sampled_points_filtered_closest_layer_validrobot, pcd_ground_truth_transformed)
+    
+
     # save the sampled points
-    save_sampled_points(sampled_points_filtered_closest_layer)
+    save_sampled_points(sampled_points_filtered_closest_layer_validrobot)
 
 
 
