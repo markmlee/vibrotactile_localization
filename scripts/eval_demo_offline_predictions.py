@@ -54,6 +54,9 @@ The output should match the predicted referrence third globally in the file pred
 
 """
 
+CREATE_GIF_ROBOT_VISUALIZATION = False #set to True to create GIF of all trials of robot hitting the cylinder with contact
+CREATE_GIF_ALL_CONTACTS = True #set to True to create GIF of all predictions, camera pannign viewpoints
+
 def xy_to_radians( x, y):
         """
         Convert x,y into radians from 0 to 2pi
@@ -330,6 +333,7 @@ def convert_contactpt_to_global(cur_contact_pt, robot, robot_joints):
     cur_contact_pt is w.r.t to the /cylinder_origin frame, which needs to be created
     /cylinder_origin frame is translated from /panda_hand frame by [0,0,-0.155]
     Returned contact_pt_global is w.r.t to the /panda_joint1 frame
+    Returned the /cylinder_origin w.r.t. to the /panda_joint1 frame
     """
     # Step 1: Get the transformation from panda_link1 to panda_hand
     pose_hand = robot.link_fk(links=['panda_hand'], cfg={
@@ -381,7 +385,14 @@ def convert_contactpt_to_global(cur_contact_pt, robot, robot_joints):
     # print(f"contact_pt_global: {contact_pt_global}")
     # print(f"x: {contact_pt_global.x}, y: {contact_pt_global.y}, z: {contact_pt_global.z}")
 
-    return contact_pt_global
+    # Step 7: Also create a Point message for the /cylinder_origin w.r.t. to the /panda_joint1 frame
+    cylinder_origin_link1 = Point()
+    cylinder_origin_link1.x = T_link1_cylinder[0, 3]
+    cylinder_origin_link1.y = T_link1_cylinder[1, 3]
+    cylinder_origin_link1.z = T_link1_cylinder[2, 3]
+
+
+    return contact_pt_global, cylinder_origin_link1
 
 
 def get_stick_cylinder(path_to_stl):
@@ -438,6 +449,81 @@ def get_pcloud_cross(path_to_pts):
     pcd_ground_truth.transform(transformation_final)
 
     return pcd_ground_truth
+
+def create_prediction_visualization_gif(cur_contact_pt_list, cylinder_pose_list, num_frames=30, save_gif=True):
+    """
+    Create a GIF of the predicted contact points with varying viewpoints
+    Input: List of contact points and cylinder poses
+    """
+
+    # Define window dimensions
+    window_width = 800
+    window_height = 600
+
+    # Create an Open3D visualization window with explicit size
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(width=window_width, height=window_height)
+    
+    # Add collision object to the visualizer
+    add_collision_object_to_visualizer(vis)
+
+    # Add coordinate frame
+    coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    vis.add_geometry(coordinate_frame)
+
+    # Add all collision points to the visualizer
+    add_contact_pts_to_visualizer(vis, cur_contact_pt_list, cylinder_pose_list)
+
+    #params for camerea to create GIF
+    # Base camera parameters
+    base_front = np.array([-0.75, 2, 0.5])
+    up = [0.4, 0.15, 1.5]
+    lookat = [0, 0, 0.5]
+    zoom = 1.2
+
+
+    if save_gif:
+        # Create directory for temporary images
+        if not os.path.exists(f"output/temp_images"):
+            os.makedirs(f"output/temp_images")
+
+        # Generate frames
+        for i in range(num_frames):
+ 
+            # Calculate rotation angle (if you want camera movement)
+            angle = np.radians(180 * math.sin(2 * math.pi * i / num_frames))
+            
+            # Rotate front vector
+            rotation = R.from_rotvec(angle * np.array([0, 0, 1]))
+            rotated_front = rotation.apply(base_front)
+
+            # Set camera view
+            ctr = vis.get_view_control()
+            ctr.set_front(rotated_front)
+            ctr.set_up(up)
+            ctr.set_lookat(lookat)
+            ctr.set_zoom(zoom)
+
+            # Render and capture image
+            vis.poll_events()
+            vis.update_renderer()
+            vis.capture_screen_image(f"output/temp_images/frame_{i:03d}.png")
+
+        vis.destroy_window()
+
+        # Create GIF
+        with imageio.get_writer(f"output/predictions.gif", mode='I', duration=0.1) as writer:
+            for i in range(num_frames):
+                image = imageio.imread(f"output/temp_images/frame_{i:03d}.png")
+                writer.append_data(image)
+
+        print(f"GIF created: output/predictions.gif")
+
+    else:
+        # Display the visualizer
+        vis.run()
+        vis.destroy_window()
+
 
 def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot, robot_joints, robot_joint_trajectory, contact_pt_transformed, num_frames=30, save_gif=False):
     """
@@ -542,13 +628,12 @@ def update_robot_position(vis, robot, robot_joints, robot_geometries):
         # Update the geometry in the visualizer
         vis.update_geometry(geom)
 
-        
-def add_geometries_to_visualizer(vis, cylinder_copy, contact_pt_transformed):
+
+def add_collision_object_to_visualizer(vis):
     """
-    Update the visualizer with the transformed cylinder, collision object, and contact point
+    Add the collision object to the visualizer
+    Input: path to the collision object STL file
     """
-    # Add the transformed cylinder
-    # vis.add_geometry(cylinder_copy)
 
     # Add the collision object to the visualizer
     # collision_obj = get_stick_cylinder("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl") #FOR STICK SIMPLE CASE
@@ -556,10 +641,65 @@ def add_geometries_to_visualizer(vis, cylinder_copy, contact_pt_transformed):
     gt_pointcloud_file = os.path.join(gt_pointcloud_path, 'OBJECT 1A cross.pts')
     collision_obj = get_pcloud_cross(gt_pointcloud_file)
 
+    # Set the color of the point cloud to neon green
+    colors = np.tile([0.0, 1.0, 0.0], (len(collision_obj.points), 1))  # Neon green color
+    collision_obj.colors = o3d.utility.Vector3dVector(colors)
+
     vis.add_geometry(collision_obj)
 
-    # Add the contact point
-    # contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
+
+def add_contact_pts_to_visualizer(vis, cur_contact_pt_list, cylinder_pose_list):
+    """
+    Add all contact points to the visualizer, add all cylinder poses to the visualizer.
+    Contact points are red spheres, cylinder poses are yellow spheres.
+    For each corresponding index of contact point and cylinder pose, add a line between them.
+    """
+    contact_spheres = []
+    cylinder_spheres = []
+    lines = []
+
+    for contact_pt, cylinder_pose in zip(cur_contact_pt_list, cylinder_pose_list):
+
+        # print(f"contact_pt: {contact_pt}, cylinder_pose: {cylinder_pose}")
+
+        # Create a red sphere for the contact point
+        contact_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.01)
+        contact_sphere.paint_uniform_color([1.0, 0.0, 0.0])
+        contact_sphere.translate(np.array([contact_pt.x, contact_pt.y, contact_pt.z]))
+        vis.add_geometry(contact_sphere)
+        contact_spheres.append(contact_sphere)
+
+        # Create a yellow sphere for the cylinder pose
+        cylinder_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.005)
+        cylinder_sphere.paint_uniform_color([1.0, 1.0, 0.0])
+        cylinder_sphere.translate(np.array([cylinder_pose.x, cylinder_pose.y, cylinder_pose.z]))
+        vis.add_geometry(cylinder_sphere)
+        cylinder_spheres.append(cylinder_sphere)
+
+        # Create a line between the contact point and the cylinder pose
+        points = [
+            [contact_pt.x, contact_pt.y, contact_pt.z],
+            [cylinder_pose.x, cylinder_pose.y, cylinder_pose.z]
+        ]
+        lines.append([0, 1])
+        line_set = o3d.geometry.LineSet(
+            points=o3d.utility.Vector3dVector(points),
+            lines=o3d.utility.Vector2iVector(lines)
+        )
+        line_set.paint_uniform_color([0.0, 1.0, 0.0])  # Green line
+        vis.add_geometry(line_set)
+
+    return contact_spheres, cylinder_spheres, lines
+
+def add_geometries_to_visualizer(vis, cylinder_copy, contact_pt_transformed):
+    """
+    Update the visualizer with the transformed cylinder, collision object, and contact point
+    """
+    # Add the transformed cylinder
+    # vis.add_geometry(cylinder_copy)
+
+    # Add the collision object (path is hardcoded for now)
+    add_collision_object_to_visualizer(vis)
 
     contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
     contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
@@ -627,13 +767,15 @@ def main(cfg: DictConfig):
     MAE_bewteen_predictions_height, MAE_bewteen_predictions_deg, MAE_gt_height, MAE_gt_deg = compare_offline_prediction_with_saved_predictions(cfg, height_pred, x_pred, y_pred, total_trials)
     print(f"MAE_height: {MAE_bewteen_predictions_height}, MAE_deg: {MAE_bewteen_predictions_deg}, MAE_gt_height: {MAE_gt_height}, MAE_gt_deg: {MAE_gt_deg}")
     
-    cur_contact_pt_list = []
+    transformed_contact_pt_list = [] #visualizing contacts
+    cylinder_pose_list = [] #visualizing robot ee pose
+
     ###transform the output to robot baselink frame###
     #post process XY -> radian -> XY (to ensure projection is on the unit circle) AND (resolve wrap around issues) 
     for trial_count in range(total_trials):
         cur_contact_pt = transform_predicted_XYZ_to_EE_XYZ(x_pred[trial_count], y_pred[trial_count],height_pred[trial_count], cfg.cylinder_radius, cfg.cylinder_transform_offset)
-        print(f"cur_contact_pt: {cur_contact_pt}")
-        cur_contact_pt_list.append(cur_contact_pt)
+        # print(f"cur_contact_pt: {cur_contact_pt}")
+
 
         # ---------------- load the robot state from the trial directory ----------------
         trial_dir = cfg.data_dir + '/trial' + str(trial_count)
@@ -646,13 +788,26 @@ def main(cfg: DictConfig):
         cylinder_colors  = np.asarray(cylinder_copy.vertex_colors)
 
         #transform the contact point to the global frame
-        contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
+        contact_pt_transformed, robot_ee_pose = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
 
         # transformed_contact_pt = visualize_robot_cylinder_stick(cylinder, cylinder_copy, robot, robot_joints, cur_contact_pt)
-        create_robot_visualization_gif(trial_count, cylinder, cylinder_copy, robot, robot_joints, robot_joint_trajectory, contact_pt_transformed, save_gif=True)
+        if CREATE_GIF_ROBOT_VISUALIZATION:
+            create_robot_visualization_gif(trial_count, cylinder, cylinder_copy, robot, robot_joints, robot_joint_trajectory, contact_pt_transformed, save_gif=True)
 
-        # print(f"transformed_contact_pt: {transformed_contact_pt}")
         # --------------------------------------------------------------------------------
+
+        # print(f"contact_pt_transformed: {contact_pt_transformed}, robot_ee_pose: {robot_ee_pose}")
+        transformed_contact_pt_list.append(contact_pt_transformed)
+        cylinder_pose_list.append(robot_ee_pose)
+
+
+    #Add all contact points to vissualizer. Create a GIF of all contact points
+    if CREATE_GIF_ALL_CONTACTS:
+        create_prediction_visualization_gif(transformed_contact_pt_list, cylinder_pose_list, save_gif=False)
+
+
+    # evaluate the Chamfer Distance between the predicted point cloud and the ground truth point cloud
+
 
 
 
