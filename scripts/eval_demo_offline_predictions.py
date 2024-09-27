@@ -439,7 +439,7 @@ def get_pcloud_cross(path_to_pts):
 
     return pcd_ground_truth
 
-def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot, robot_joints, robot_joint_trajectory, cur_contact_pt, num_frames=30, save_gif=False):
+def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot, robot_joints, robot_joint_trajectory, contact_pt_transformed, num_frames=30, save_gif=False):
     """
     Create a GIF of the robot visualization with varying viewpoints and robot movement
     """
@@ -450,9 +450,10 @@ def create_robot_visualization_gif(trial_count, cylinders, cylinder_copy, robot,
     # Create an Open3D visualization window with explicit size
     vis = o3d.visualization.Visualizer()
     vis.create_window(width=window_width, height=window_height)
+    
 
     # Add geometries to the visualizer
-    add_geometries_to_visualizer(vis, cylinder_copy, robot, robot_joints, cur_contact_pt)
+    add_geometries_to_visualizer(vis, cylinder_copy, contact_pt_transformed)
 
     # Add initial robot mesh
     robot_geometries = add_robot_to_visualizer(vis, robot, robot_joints)
@@ -542,7 +543,7 @@ def update_robot_position(vis, robot, robot_joints, robot_geometries):
         vis.update_geometry(geom)
 
         
-def add_geometries_to_visualizer(vis, cylinder_copy, robot, robot_joints, cur_contact_pt):
+def add_geometries_to_visualizer(vis, cylinder_copy, contact_pt_transformed):
     """
     Update the visualizer with the transformed cylinder, collision object, and contact point
     """
@@ -558,7 +559,8 @@ def add_geometries_to_visualizer(vis, cylinder_copy, robot, robot_joints, cur_co
     vis.add_geometry(collision_obj)
 
     # Add the contact point
-    contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
+    # contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
+
     contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
     contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
     contact_pt.translate(np.array([contact_pt_transformed.x, contact_pt_transformed.y, contact_pt_transformed.z]))
@@ -643,8 +645,11 @@ def main(cfg: DictConfig):
         cylinder_verts = np.asarray(cylinder_copy.vertices)
         cylinder_colors  = np.asarray(cylinder_copy.vertex_colors)
 
+        #transform the contact point to the global frame
+        contact_pt_transformed = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints)
+
         # transformed_contact_pt = visualize_robot_cylinder_stick(cylinder, cylinder_copy, robot, robot_joints, cur_contact_pt)
-        create_robot_visualization_gif(trial_count, cylinder, cylinder_copy, robot, robot_joints, robot_joint_trajectory, cur_contact_pt, save_gif=True)
+        create_robot_visualization_gif(trial_count, cylinder, cylinder_copy, robot, robot_joints, robot_joint_trajectory, contact_pt_transformed, save_gif=True)
 
         # print(f"transformed_contact_pt: {transformed_contact_pt}")
         # --------------------------------------------------------------------------------
