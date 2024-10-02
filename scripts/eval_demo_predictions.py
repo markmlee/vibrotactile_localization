@@ -7,6 +7,7 @@ import pandas as pd
 import sys
 
 from scipy.spatial import cKDTree
+from scipy.interpolate import interp1d
 
 
 """
@@ -169,7 +170,7 @@ def get_init_transform_via_RANSAC(pcd_prediction, pcd_ground_truth):
     return the transformation matrix
     """
 
-    voxel_size = 0.01  # Set this according to the scale of your point cloud
+    voxel_size = 0.005  # Set this according to the scale of your point cloud
     source_down, source_fpfh = preprocess_point_cloud(pcd_ground_truth, voxel_size)
     target_down, target_fpfh = preprocess_point_cloud(pcd_prediction, voxel_size)
 
@@ -327,16 +328,58 @@ def compute_hausdorff_distance(source, target):
     
     return hausdorff_distance
 
-def load_manual_measure_of_cross():
-    """
-    manual measurement of points the cross in 3D space
-    8 points
-    """
+# def load_manual_measure_of_cross():
+#     """
+#     manual measurement of points the cross in 3D space
+#     8 points
+#     """
 
-    manual_ponts = [[0, 0.3, 0.3], [-0.01, 0.32, 0.3], [0.15, 0.4, 0.3], [0.1, 0.42, 0.3], [-0.15, 0.4, 0.3], [-0.16, 0.42, 0.3], [0,0.65, 0.3], [-0.02, 0.65, 0.3]]
-    manual_ponts_np = np.array(manual_ponts)
+#     manual_ponts = [[0, 0.3, 0.3], [-0.01, 0.32, 0.3], [0.15, 0.4, 0.3], [0.1, 0.42, 0.3], [-0.15, 0.4, 0.3], [-0.16, 0.42, 0.3], [0,0.65, 0.3], [-0.02, 0.65, 0.3]]
+#     manual_ponts_np = np.array(manual_ponts)
 
-    return manual_ponts_np
+#     # interpolate the points along the cross to get more points
+#     #TODO:
+
+#     return manual_ponts_np
+
+def load_manual_measure_of_cross(num_points=100):
+    """
+    Manual measurement of points on the cross in 3D space
+    Interpolates the original 8 points to create a denser point cloud
+    
+    Parameters:
+    num_points (int): Number of points to generate for each segment of the cross
+    
+    Returns:
+    numpy.ndarray: Interpolated points of the cross
+    """
+    manual_points = np.array([
+        [0, 0.3, 0.3], [-0.01, 0.32, 0.3],  # Bottom of vertical
+        [0.15, 0.4, 0.3], [0.1, 0.42, 0.3],  # Right of horizontal
+        [-0.15, 0.4, 0.3], [-0.16, 0.42, 0.3],  # Left of horizontal
+        [0, 0.65, 0.3], [-0.02, 0.65, 0.3]  # Top of vertical
+    ])
+
+    # Separate points into vertical and horizontal components
+    vertical_points = np.vstack((manual_points[:2], manual_points[6:]))
+    horizontal_points = manual_points[2:6]
+
+    # Interpolate vertical component
+    t_vertical = np.linspace(0, 1, vertical_points.shape[0])
+    t_new_vertical = np.linspace(0, 1, num_points)
+    interpolator_vertical = interp1d(t_vertical, vertical_points.T, kind='cubic')
+    vertical_interpolated = interpolator_vertical(t_new_vertical).T
+
+    # Interpolate horizontal component
+    t_horizontal = np.linspace(0, 1, horizontal_points.shape[0])
+    t_new_horizontal = np.linspace(0, 1, num_points)
+    interpolator_horizontal = interp1d(t_horizontal, horizontal_points.T, kind='cubic')
+    horizontal_interpolated = interpolator_horizontal(t_new_horizontal).T
+
+    # Combine interpolated points
+    interpolated_points = np.vstack((vertical_interpolated, horizontal_interpolated))
+
+    return interpolated_points
 
 def rotate_point_cloud_in_place(pcd, angle_degrees):
     """
@@ -378,27 +421,27 @@ def determine_transformation_from_scanned_obj(pcd_prediction, pcd_ground_truth):
   
 
     #get initial transform matrix manually
-    # init_transform = get_init_transform_via_RANSAC(pcd_prediction, pcd_ground_truth)
+    init_transform = get_init_transform_via_RANSAC(pcd_prediction, pcd_ground_truth)
 
     # from initial RANSAC
-    init_transform = np.array([
-    [-0.89943212, -0.20647158,  0.38521597,  0.87718977],
-    [-0.0062678,   0.88738189,  0.46099251, -0.7204085],
-    [-0.43701553,  0.41221702, -0.7994339,   0.40500757],
-    [ 0,           0,           0,           1]
-])
+#     init_transform = np.array([
+#     [-0.89943212, -0.20647158,  0.38521597,  0.87718977],
+#     [-0.0062678,   0.88738189,  0.46099251, -0.7204085],
+#     [-0.43701553,  0.41221702, -0.7994339,   0.40500757],
+#     [ 0,           0,           0,           1]
+# ])
     
     pcd_ground_truth.transform(init_transform)
 
     # from initial ICP (but flipped by Rz 180)
-    finetuned_transform = np.array([
-    [ 0.56131932,  0.60134353,  0.56860054, -0.36406505],
-    [ 0.34983394,  0.4502411,  -0.82152247,  0.48225966],
-    [-0.75002456,  0.6600522,  0.04235865,  0.05576134],
-    [ 0,           0,           0,           1]
-])
+#     finetuned_transform = np.array([
+#     [ 0.56131932,  0.60134353,  0.56860054, -0.36406505],
+#     [ 0.34983394,  0.4502411,  -0.82152247,  0.48225966],
+#     [-0.75002456,  0.6600522,  0.04235865,  0.05576134],
+#     [ 0,           0,           0,           1]
+# ])
     
-    pcd_ground_truth.transform(finetuned_transform)
+#     pcd_ground_truth.transform(finetuned_transform)
 
 
     rotated_pcd_ground_truth = rotate_point_cloud_in_place(pcd_ground_truth, 180)
@@ -406,18 +449,18 @@ def determine_transformation_from_scanned_obj(pcd_prediction, pcd_ground_truth):
     pcd_ground_truth_transformed = rotated_pcd_ground_truth
 
     # Get the transformation matrix
-    # transformation_matrix, pcd_ground_truth_transformed = get_transformation_ICP(pcd_prediction, pcd_ground_truth_transformed)
+    transformation_matrix, pcd_ground_truth_transformed = get_transformation_ICP(pcd_prediction, pcd_ground_truth_transformed)
 
 
     # from final ICP
-    finetuned_transform = np.array([
-    [ 9.99656440e-01, -2.61230526e-02, -2.14197046e-03,  1.50783523e-02],
-    [ 2.61243814e-02,  9.99658523e-01,  5.94743537e-04,  1.24322726e-01],
-    [ 2.12570251e-03, -6.50496860e-04,  9.99997529e-01,  2.16753742e-04],
-    [ 0,           0,           0,           1]
-])
+#     finetuned_transform = np.array([
+#     [ 9.99656440e-01, -2.61230526e-02, -2.14197046e-03,  1.50783523e-02],
+#     [ 2.61243814e-02,  9.99658523e-01,  5.94743537e-04,  1.24322726e-01],
+#     [ 2.12570251e-03, -6.50496860e-04,  9.99997529e-01,  2.16753742e-04],
+#     [ 0,           0,           0,           1]
+# ])
     
-    pcd_ground_truth_transformed.transform(finetuned_transform)
+    # pcd_ground_truth_transformed.transform(finetuned_transform)
 
     #determine the transformation matrix between the final pointcloud and the original input pointcloud
     transformation_final =  get_init_transform_via_RANSAC(pcd_ground_truth_transformed, pcd_ground_truth_copy)
@@ -428,6 +471,8 @@ def determine_transformation_from_scanned_obj(pcd_prediction, pcd_ground_truth):
     transformation_matrix, pcd_ground_truth_transformed = get_transformation_ICP(pcd_prediction, pcd_ground_truth_copy)
 
     print(f"ICP transformation matrix:\n{transformation_matrix}")
+
+    return transformation_matrix
 
 
 def manual_transformation_from_predetermined_transformation():
@@ -450,7 +495,7 @@ def main():
     print(f"**** start script **** ")
     
     #transform GT pointcloud to predictions' coordinate system
-    prediction_path = '/home/mark/audio_learning_project/data/test_mapping/cross_easy_fullv4'
+    prediction_path = '/home/mark/audio_learning_project/data/test_mapping/cross_easy_fullv2'
     # prediction_path = '/home/mark/audio_learning_project/data/test_mapping/cross_easy4'
 
     # -------------- SINGLE USE! for appending predictions from multiple trials --------------
@@ -477,8 +522,8 @@ def main():
     gt_pointcloud = gt_pointcloud.astype(np.float64)  # or np.float32
 
     # load a manual measurement of the cross in 3D space
-    manual_points = load_manual_measure_of_cross()
-    # predictions_pointcloud = manual_points #use manual points for now
+    manual_points = load_manual_measure_of_cross(100)
+    predictions_pointcloud = manual_points #use manual points for now
 
     print(f"predictions_pointcloud shape: {predictions_pointcloud.shape}, gt_pointcloud shape: {gt_pointcloud.shape}")
 
@@ -494,15 +539,26 @@ def main():
     pcd_prediction = o3d.geometry.PointCloud()
     pcd_prediction.points = o3d.utility.Vector3dVector(predictions_pointcloud[:,:3])
 
+    
 
+    # -------------------------------------------------------
+    # transformation_final  = determine_transformation_from_scanned_obj(pcd_prediction, pcd_ground_truth)
+    # pcd_ground_truth_copy.transform(transformation_final)
+    # visualize_two_pointclouds(pcd_prediction, pcd_ground_truth_copy)
+
+    # -------------------------------------------------------
 
     # Get pre-determined transformation of scanned object to rough alignment with prediction coordinate system
     transformation_final =  manual_transformation_from_predetermined_transformation()
+
     # Transform the ground truth point cloud to the prediction coordinate system
     pcd_ground_truth_copy.transform(transformation_final)
+
     # fine tune the transformation using ICP
     transformation_matrix, pcd_ground_truth_transformed = get_transformation_ICP(pcd_prediction, pcd_ground_truth_copy)
 
+    rotated_pcd_ground_truth = rotate_point_cloud_in_place(pcd_ground_truth_transformed, -1)
+    pcd_ground_truth_transformed = rotated_pcd_ground_truth
     visualize_two_pointclouds(pcd_prediction, pcd_ground_truth_transformed)
 
     # Compute Chamfer Distance

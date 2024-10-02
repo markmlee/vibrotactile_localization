@@ -43,6 +43,7 @@ from datasets import AudioDataset
 import microphone_utils as mic_utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../learning')))
 from transforms import to_mel_spectrogram, get_signal
+import eval_utils as eval_utils
 
 """
 The purpose of this script is to load the model and predict the output of the model on the given dataset
@@ -391,7 +392,7 @@ def convert_contactpt_to_global(cur_contact_pt, robot, robot_joints):
     cylinder_origin_link1.y = T_link1_cylinder[1, 3]
     cylinder_origin_link1.z = T_link1_cylinder[2, 3]
 
-
+    
     return contact_pt_global, cylinder_origin_link1
 
 
@@ -445,8 +446,17 @@ def get_pcloud_cross(path_to_pts):
 
     # Get pre-determined transformation of scanned object to rough alignment with prediction coordinate system
     transformation_final =  manual_transformation_from_predetermined_transformation()
+
+    # Create an additional translation matrix for 3cm in Z direction
+    manual_translation = np.eye(4)
+    manual_translation[1, 3] = 0.03  # 3cm down
+    manual_translation[0, 3] = -0.02  # 2cm right 
+
+    # Combine the transformations
+    combined_transformation = manual_translation @ transformation_final
+
     # Transform the ground truth point cloud to the prediction coordinate system
-    pcd_ground_truth.transform(transformation_final)
+    pcd_ground_truth.transform(combined_transformation)
 
     return pcd_ground_truth
 
@@ -641,17 +651,21 @@ def add_collision_object_to_visualizer(vis):
     gt_pointcloud_file = os.path.join(gt_pointcloud_path, 'OBJECT 1A cross.pts')
     collision_obj = get_pcloud_cross(gt_pointcloud_file)
 
-    # Set the color of the point cloud to neon green
-    colors = np.tile([0.0, 1.0, 0.0], (len(collision_obj.points), 1))  # Neon green color
-    collision_obj.colors = o3d.utility.Vector3dVector(colors)
+    # Downsample the point cloud
+    voxel_size = 0.01  # Adjust the voxel size as needed
+    collision_obj_downsampled = collision_obj.voxel_down_sample(voxel_size)
 
-    vis.add_geometry(collision_obj)
+    # Set the color of the point cloud to neon green
+    colors = np.tile([0.0, 1.0, 0.0], (len(collision_obj_downsampled.points), 1))  # Neon green color
+    collision_obj_downsampled.colors = o3d.utility.Vector3dVector(colors)
+
+    vis.add_geometry(collision_obj_downsampled)
 
 
 def add_contact_pts_to_visualizer(vis, cur_contact_pt_list, cylinder_pose_list):
     """
     Add all contact points to the visualizer, add all cylinder poses to the visualizer.
-    Contact points are red spheres, cylinder poses are yellow spheres.
+    Contact points are red spheres, cylinder poses are blue spheres.
     For each corresponding index of contact point and cylinder pose, add a line between them.
     """
     contact_spheres = []
@@ -669,9 +683,9 @@ def add_contact_pts_to_visualizer(vis, cur_contact_pt_list, cylinder_pose_list):
         vis.add_geometry(contact_sphere)
         contact_spheres.append(contact_sphere)
 
-        # Create a yellow sphere for the cylinder pose
+        # Create a blue sphere for the cylinder pose
         cylinder_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.005)
-        cylinder_sphere.paint_uniform_color([1.0, 1.0, 0.0])
+        cylinder_sphere.paint_uniform_color([0, 0, 1.0])
         cylinder_sphere.translate(np.array([cylinder_pose.x, cylinder_pose.y, cylinder_pose.z]))
         vis.add_geometry(cylinder_sphere)
         cylinder_spheres.append(cylinder_sphere)
@@ -686,7 +700,7 @@ def add_contact_pts_to_visualizer(vis, cur_contact_pt_list, cylinder_pose_list):
             points=o3d.utility.Vector3dVector(points),
             lines=o3d.utility.Vector2iVector(lines)
         )
-        line_set.paint_uniform_color([0.0, 1.0, 0.0])  # Green line
+        line_set.paint_uniform_color([0.0, 0.0, 0.0])  # Black line
         vis.add_geometry(line_set)
 
     return contact_spheres, cylinder_spheres, lines
@@ -740,8 +754,22 @@ def add_robot_to_visualizer(vis, robot, robot_joints):
 
     return robot_geometries
 
+def convert_list_of_points_to_pcloud(transformed_contact_pt_list):
+    """
+    Convert a list of contact points to an Open3D point cloud
+    Input: List of contact points in Point message
+    Output: Open3D point cloud
+    """
 
+    # Extract the coordinates from the list of Point messages
+    points = np.array([[pt.x, pt.y, pt.z] for pt in transformed_contact_pt_list])
 
+    # Create an Open3D PointCloud object
+    pcloud_of_contactpts = o3d.geometry.PointCloud()
+    pcloud_of_contactpts.points = o3d.utility.Vector3dVector(points)
+
+    return pcloud_of_contactpts
+ 
 @hydra.main(version_base='1.3',config_path='../learning/configs', config_name = 'inference')
 def main(cfg: DictConfig):
     # -------------------------------------------------------
@@ -764,8 +792,8 @@ def main(cfg: DictConfig):
 
     print(f"size of height_pred: {height_pred.shape}, x_pred: {x_pred.shape}, y_pred: {y_pred.shape}")
 
-    MAE_bewteen_predictions_height, MAE_bewteen_predictions_deg, MAE_gt_height, MAE_gt_deg = compare_offline_prediction_with_saved_predictions(cfg, height_pred, x_pred, y_pred, total_trials)
-    print(f"MAE_height: {MAE_bewteen_predictions_height}, MAE_deg: {MAE_bewteen_predictions_deg}, MAE_gt_height: {MAE_gt_height}, MAE_gt_deg: {MAE_gt_deg}")
+    # MAE_bewteen_predictions_height, MAE_bewteen_predictions_deg, MAE_gt_height, MAE_gt_deg = compare_offline_prediction_with_saved_predictions(cfg, height_pred, x_pred, y_pred, total_trials)
+    # print(f"MAE_height: {MAE_bewteen_predictions_height}, MAE_deg: {MAE_bewteen_predictions_deg}, MAE_gt_height: {MAE_gt_height}, MAE_gt_deg: {MAE_gt_deg}")
     
     transformed_contact_pt_list = [] #visualizing contacts
     cylinder_pose_list = [] #visualizing robot ee pose
@@ -801,14 +829,44 @@ def main(cfg: DictConfig):
         cylinder_pose_list.append(robot_ee_pose)
 
 
+    # ================== Post processing ==================
+    delete_trial_index = []
+
+    for trial_count in range(total_trials):
+        #print only 3 decimal places
+        # print(f"cylinder_pos_X: {cylinder_pose_list[trial_count].x:.3f}, "
+        #     f"cylinder_pos_Y: {cylinder_pose_list[trial_count].y:.3f}, "
+        #     f"cylinder_pos_Z: {cylinder_pose_list[trial_count].z:.3f}")
+        
+        # if y value > 0.53, remove this trial from  cylinder_pose_list and transformed_contact_pt_list
+        if cylinder_pose_list[trial_count].y > 0.53:
+            print(f"y value > 0.53, removing trial: {trial_count}")
+            delete_trial_index.append(trial_count)
+    
+    #delete the trials with y > 0.53
+    for index in sorted(delete_trial_index, reverse=True):
+        print(f"deleted index: {index}, value of y: {cylinder_pose_list[index].y}")
+        del cylinder_pose_list[index]
+        del transformed_contact_pt_list[index]
+    # =====================================================
+        
+
     #Add all contact points to vissualizer. Create a GIF of all contact points
     if CREATE_GIF_ALL_CONTACTS:
         create_prediction_visualization_gif(transformed_contact_pt_list, cylinder_pose_list, save_gif=False)
 
+    # Convert a o3d pointcloud for the contact point transformed
+    pcloud_of_contactpts = convert_list_of_points_to_pcloud(transformed_contact_pt_list)
+ 
+    # get GT point cloud
+    gt_pointcloud_path = '/home/mark/audio_learning_project/evaluation/3D_scan_GT'
+    gt_pointcloud_file = os.path.join(gt_pointcloud_path, 'OBJECT 1A cross.pts')
+    collision_obj = get_pcloud_cross(gt_pointcloud_file)
 
     # evaluate the Chamfer Distance between the predicted point cloud and the ground truth point cloud
+    CD_singleway = eval_utils.compute_chamfer_distance_singleway(pcloud_of_contactpts, collision_obj)
 
-
+    print(f"Chamfer Distance: {CD_singleway}")
 
 
     
