@@ -155,10 +155,13 @@ class Checker_Collision:
         raise ValueError("No valid pose found in the forward kinematics result")
 
     def visualize_contact_point(self, contact_point):
-        contact_pcd = o3d.geometry.PointCloud()
-        contact_pcd.points = o3d.utility.Vector3dVector([contact_point])
-        contact_pcd.paint_uniform_color([1.0, 0.0, 0.0])  # Red color
-        self.vis.add_geometry(contact_pcd)
+        # Create a red sphere for the contact point
+        contact_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)  # Adjust the radius as needed
+        contact_sphere.paint_uniform_color([1.0, 0.0, 0.0])  # Red color
+        contact_sphere.translate(contact_point)
+
+        return contact_sphere
+        
 
     def update_visualization(self):
         self.vis.poll_events()
@@ -173,10 +176,14 @@ class Checker_Collision:
         contact_point_list = []
         pcloud_pts = np.asarray(self.collision_obj_pcloud.points)
 
+        # Variables to keep track of the geometries added in the previous iteration
+        previous_contact_sphere = None
+        previous_wire_frame = None
+
         for joint_states in joint_states_list:
             
             # Update robot position            
-            self.update_robot_position(joint_states)
+            # self.update_robot_position(joint_states)
 
             # Get new end-effector pose
             ee_pose, _ = self.get_arm_pose_from_robotstate(joint_states)
@@ -185,6 +192,7 @@ class Checker_Collision:
             cylinder_copy = copy.deepcopy(self.cylinder)
             cylinder_copy.transform(ee_pose)
             cylinder_pts = np.asarray(cylinder_copy.vertices)
+            cylinder_colors = np.asarray(cylinder_copy.vertex_colors)
 
             # Find closest point
             idx, min_dist, contact_point = self.find_closest_point(cylinder_pts, pcloud_pts)
@@ -197,11 +205,24 @@ class Checker_Collision:
             contact_point_pt.z = contact_point[2]
             contact_point_list.append(contact_point_pt)
 
-            # print(f"Closest index: {idx}, min_dist: {min_dist}")
+            print(f"Closest index: {idx}, min_dist: {min_dist}")
 
             if visualize:
+                # Remove previous geometries
+                if previous_contact_sphere is not None:
+                    self.vis.remove_geometry(previous_contact_sphere)
+                if previous_wire_frame is not None:
+                    self.vis.remove_geometry(previous_wire_frame)
+
                 # Visualize contact point
-                self.visualize_contact_point(contact_point)
+                contact_sphere = self.visualize_contact_point(contact_point)
+                self.vis.add_geometry(contact_sphere)
+                previous_contact_sphere = contact_sphere
+
+                # Visualize cylinder
+                wire_frame = o3d.geometry.LineSet.create_from_triangle_mesh(cylinder_copy)
+                self.vis.add_geometry(wire_frame)
+                previous_wire_frame = wire_frame
 
                 # Update visualization
                 self.update_visualization()
@@ -210,7 +231,7 @@ class Checker_Collision:
                 image = self.capture_image()
                 image_list.append((image * 255).astype(np.uint8))
 
-                time.sleep(0.5)
+                time.sleep(1)
 
         return min_dist_list, image_list, contact_point_list
 

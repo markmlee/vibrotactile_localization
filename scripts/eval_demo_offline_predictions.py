@@ -17,6 +17,7 @@ from tqdm import tqdm
 import math
 from scipy.spatial.transform import Rotation as R
 from sklearn.neighbors import NearestNeighbors
+from datetime import datetime
 
 #urdfpy
 from urdfpy import URDF
@@ -61,6 +62,7 @@ The output should match the predicted referrence third globally in the file pred
 
 CREATE_GIF_ROBOT_VISUALIZATION = False #set to True to create GIF of all trials of robot hitting the cylinder with contact
 CREATE_GIF_ALL_CONTACTS = True #set to True to create GIF of all predictions, camera pannign viewpoints
+
 
 def xy_to_radians( x, y):
         """
@@ -461,9 +463,12 @@ def get_pcloud_cross(path_to_pts):
     inlier_cloud = pcd_ground_truth.select_by_index(ind)
     outlier_cloud = pcd_ground_truth.select_by_index(ind, invert=True)
 
+    voxel_size = 0.005
+    inlier_cloud = inlier_cloud.voxel_down_sample(voxel_size)
+
     # print("Showing outliers (red) and inliers (gray): ")
-    # outlier_cloud.paint_uniform_color([1, 0, 0])
-    # inlier_cloud.paint_uniform_color([0.8, 0.8, 0.8])
+    outlier_cloud.paint_uniform_color([1, 0, 0])
+    inlier_cloud.paint_uniform_color([0.8, 0.8, 0.8])
     # o3d.visualization.draw_geometries([inlier_cloud, outlier_cloud])
 
 
@@ -860,7 +865,8 @@ def main(cfg: DictConfig):
     ee_pose_list = []
     robot_joints_list = []
     robot_joint_trajectory_list = []
-    for trial_count in range(32): 
+    
+    for trial_count in range(total_trials): 
         # load the robot state from the trial directory 
         trial_dir = cfg.data_dir + '/trial' + str(trial_count)
         ee_pose, robot_joints, robot_joint_trajectory = get_arm_pose_from_robotstate(trial_dir, robot)
@@ -880,6 +886,20 @@ def main(cfg: DictConfig):
     # Run collision check
     min_dist_list, image_list, gt_contact_point_list = collision_checker.run_collision_check(robot_joints_list, visualize=False)
 
+    # Save the images in the output directory with the current timestamp
+    output_dir = "output_images"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir_with_timestamp = os.path.join(output_dir, timestamp)
+
+    # Create the output directory if it doesn't exist
+    os.makedirs(output_dir_with_timestamp, exist_ok=True)
+
+    for i, image in enumerate(image_list):
+        image_path = os.path.join(output_dir_with_timestamp, f"image_{i}.png")
+        imageio.imwrite(image_path, image)
+        print(f"Saved image {i} to {image_path}")
+
+    # sys.exit()
 
 
     ###transform the output to robot baselink frame###
