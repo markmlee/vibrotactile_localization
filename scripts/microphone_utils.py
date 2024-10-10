@@ -1110,10 +1110,12 @@ def trim_or_pad(wav, max_num_frames):
     either pad or wav clips to be same length as desired max_num_frames
     return modified wav
     """
-    
+    # print(f"wav size: {wav.size()}, max_num_frames: {max_num_frames}") #wav size: torch.Size([6, 87968]), max_num_frames: 88200
+
     #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
     if wav.size(1) < max_num_frames:
-        wav = F.pad(wav, (0, max_num_frames - wav.size(1)), mode='circular'   )
+        wav = F.pad(wav, (0, max_num_frames - wav.size(1)), mode='replicate')
+        # wav = F.pad(wav, (0, max_num_frames - wav.size(1)), mode='circular'   )
     else:
         wav = wav[:, :max_num_frames]
 

@@ -5,19 +5,42 @@ import time
 import matplotlib.pyplot as plt
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC_ranged'
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_UMC_fixed'
-dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite'
+dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_15_Left'
+# dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
 
-dataset_directory1 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal'
-dataset_directory2 = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
-dataset_directory3 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
-dataset_directory4 = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
-dataset_directory5 = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
+#original without suction
+# dataset_directory1a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal' #DONT USE BC NOISY
+dataset_directory1a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_cleaned'
+dataset_directory1b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
+dataset_directory1c = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
+dataset_directory1d = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
+dataset_directory1e = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
 
-dataset_directory6 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite'
-dataset_directory7 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
+#with suction
+dataset_directory2a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_v2'
+dataset_directory2b = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_v2'
+dataset_directory2c = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_v2'
+dataset_directory2d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v2'
+
+#with opposite side hits
+dataset_directory3a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite'
+dataset_directory3b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
 
 
+#with vertical side hits
+dataset_directory4a = '/home/mark/audio_learning_project/data/wood_T12_L42_Vertical'
+dataset_directory4b = '/home/mark/audio_learning_project/data/wood_T22_L42_Vertical'
+dataset_directory4c = '/home/mark/audio_learning_project/data/wood_T32_L42_Vertical'
+dataset_directory4d = '/home/mark/audio_learning_project/data/wood_T25_L42_Vertical'
 
+
+# dataset_directory5 = '/home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combinedv2'
+
+# dataset_directory6 = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite'
+# dataset_directory7 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
+
+
+dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_suctionOnly_horizontal_opposite_verticalv2'
 # dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_T12_T22_T32_L42_T22_L80_Horizontal_combined'
 # dataset_directory_new = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
 
@@ -253,16 +276,72 @@ def plot_height_radian(directory):
 
     sys.exit()
 
+def combine_delete_trials(delete_trials_list):
+    return sorted(set(trial for start, end in delete_trials_list for trial in range(start, end )))
+
+def delete_trials_and_reenumerate(dataset_dir, data_interval_length, delete_trials_list):
+    """
+    load the directory to the single dataset
+    load the interval legnth and the list of trials to remove
+    delete the trials from the dataset
+    reenumerate the remaining trials
+    """
+
+    # given list of delete_trials_list that only contains range [ [start,end],..., [start,end] ]
+    # combine into a single list of all trials to delete
+    delete_trial_all_list = combine_delete_trials(delete_trials_list)
+    print(f"delete_trial_all_list {delete_trial_all_list}")
+
+    #get all directory path to trials
+    dir = sorted([os.path.join(dataset_dir, f) for f in os.listdir(dataset_dir) if f.startswith('trial')], key=lambda x: int(os.path.basename(x)[5:]))                #filter out directory that does not start with 'trial'
+    dir = [d for d in dir if d.split('/')[-1].startswith('trial')]
+
+    len_data = len(dir)
+
+    for trial_n in range(len_data):
+
+        if trial_n in delete_trial_all_list:
+            #delete the trial
+            print(f"deleting {dir[trial_n]}")
+            os.system(f"rm -r {dir[trial_n]}")
+
+    
+    # #re-enumerate the remaining trials
+
+    #get all directory path to trials
+    dir = sorted([os.path.join(dataset_dir, f) for f in os.listdir(dataset_dir) if f.startswith('trial')], key=lambda x: int(os.path.basename(x)[5:]))                #filter out directory that does not start with 'trial'
+    dir = [d for d in dir if d.split('/')[-1].startswith('trial')]
+
+    len_data_trimmed = len(dir)
+    print(f"len_data_trimmed {len_data_trimmed}")
+
+    for trial_n in range(len_data_trimmed):
+        
+        #rename the trial to the new trial number
+        new_trial_dir = f"{dataset_dir}trial{trial_n}"
+        print(f"renaming {dir[trial_n]} to {new_trial_dir}")
+        os.rename(dir[trial_n], new_trial_dir)
+        time.sleep(0.05)
+
+  
 
 def main():
 
+    # ----------------- For removing bad GT data observed from collision checker ------------------------------------------
+    # dataset_dir = "/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_v2/"
+    # data_interval_length = 5
+    # delete_trials_list = [[100,110], [250,260]]#, [320,340], [980,1000], [1460,1480], [1500,1520]] #[100-120], [320-340], [980-1000], [1460-1480], [1500-1520]
+    # delete_trials_and_reenumerate(dataset_dir, data_interval_length, delete_trials_list)
+    # sys.exit()
+
     # ----------------------------- ONLY RUN ONCE WHEN MODIFYING GT_LABEL TO OFFSET -----------------------------
     # modify_gt_label_height_only(dataset_directory)
-    # modify_gt_label_height_radian_from_input_label(dataset_directory_GT_modify)
+    modify_gt_label_height_radian_from_input_label(dataset_directory_GT_modify) #USE THIS FUNCTION
 
     # modify_gt_label_radian_only(dataset_directory_GT_modify)
     # --------------------------------------------------------------------------------------------------------------------
 
+    
 
 
     # ----------------------------- VISUALIZE THE GT LABELS FOR SANITY CHECK -----------------------------
@@ -277,14 +356,24 @@ def main():
 
     #iterate through all dataset directories and then combine into a single one
     # combine_dataset_directory_list = [dataset_directory_combined, dataset_directory_new]
-    combine_dataset_directory_list = [dataset_directory1, dataset_directory2, dataset_directory3, dataset_directory4, dataset_directory5, dataset_directory6, dataset_directory7]
-
-    combined_dataset_name = '/home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_opposite_T12_T22_Horizontal_combinedv2'
+    # combine_dataset_directory_list = [dataset_directory1, dataset_directory2, dataset_directory3, dataset_directory4, dataset_directory5, dataset_directory6, dataset_directory7]
+    combine_dataset_directory_list = [
+        dataset_directory1a, dataset_directory1b, dataset_directory1c, dataset_directory1d, dataset_directory1e, 
+        dataset_directory2a, dataset_directory2b, dataset_directory2c, dataset_directory2d, 
+        dataset_directory3a, dataset_directory3b,
+        dataset_directory4a, dataset_directory4b, dataset_directory4c, dataset_directory4d]
+    
+    
+    # combine_dataset_directory_list = [
+    #     dataset_directory2a, dataset_directory2b, dataset_directory2c, dataset_directory2d, 
+    #     dataset_directory3a, dataset_directory3b,
+    #     dataset_directory4a, dataset_directory4b, dataset_directory4c, dataset_directory4d]
+    
 
     #make the combined dataset directory
-    os.system(f"mkdir -p {combined_dataset_name}")
+    os.system(f"mkdir -p {dataset_directory_combined}")
     
-    combine_dataset(combine_dataset_directory_list, combined_dataset_name)
+    combine_dataset(combine_dataset_directory_list, dataset_directory_combined)
 
     sys.exit()
     # --------------------------------------------------------------------------------------------------------------------

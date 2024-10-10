@@ -61,6 +61,8 @@ class AudioDataset(Dataset):
         count = 0
         data_dir = f"{data_dir}trial"
         self.dir = []
+
+        print(f"data_dir: {data_dir}, len(self.dir): {len(self.dir)}, len_data: {len_data}")
         while len(self.dir) < len_data:
             file_name = f"{data_dir}{count}"
 
@@ -150,7 +152,7 @@ class AudioDataset(Dataset):
 
             wav, sample_rate = torchaudio.load(wav_filename)
             self.sample_rate = sample_rate
-            # print(f"sample rate: {sample_rate}") #--> sample rate: 44100
+            # print(f"wave size: {wav.size()}, sample rate: {sample_rate}") #--> sample rate: 44100
 
             #to ensure same wav length, either pad or clip to be same length as cfg.max_num_frames
             wav = mic_utils.trim_or_pad(wav, self.cfg.max_num_frames)

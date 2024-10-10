@@ -9,6 +9,51 @@ import sys
 from scipy.spatial import cKDTree
 
 
+def compute_MAE_contact_point(source, target):
+    """
+    Given input Point() objects, compute the mean absolute error (MAE) between the contact points.
+    Assume indices are aligned.
+    """
+    # Convert lists of points to numpy arrays
+    source_points = np.array([[pt.x, pt.y, pt.z] for pt in source])
+    target_points = np.array([[pt.x, pt.y, pt.z] for pt in target])
+
+    # Compute the mean absolute error (MAE) between the contact points
+    mae = np.mean(np.abs(source_points - target_points))
+
+    return mae
+
+def compute_euclidean_distance(source, target):
+    """
+    Given input lists of Point() objects, compute the Euclidean distance between the contact points.
+    Assume indices are aligned.
+    """
+    # Convert lists of points to numpy arrays
+    source_points = np.array([[pt.x, pt.y, pt.z] for pt in source])
+    target_points = np.array([[pt.x, pt.y, pt.z] for pt in target])
+
+    # Compute the Euclidean distance between the contact points
+    distances = np.linalg.norm(source_points - target_points, axis=1)
+
+    # average distance
+    distances = np.mean(distances)
+
+    return distances
+
+def compute_MSE_contact_point(source, target):
+    """
+    Given input lists of Point() objects, compute the mean squared error (MSE) between the contact points.
+    Assume indices are aligned.
+    """
+    # Convert lists of points to numpy arrays
+    source_points = np.array([[pt.x, pt.y, pt.z] for pt in source])
+    target_points = np.array([[pt.x, pt.y, pt.z] for pt in target])
+
+    # Compute the mean squared error (MSE) between the contact points
+    mse = np.mean(np.square(source_points - target_points))
+
+    return mse
+
 def compute_chamfer_distance_singleway(source, target):
     # Convert point clouds to numpy arrays
     source_points = np.asarray(source.points)

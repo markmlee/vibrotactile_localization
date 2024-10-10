@@ -44,7 +44,7 @@ def load_data(cfg):
 
     #visuaize dataset
     if cfg.visuaize_dataset:
-        for i in range(1):
+        for i in range(10):
             
             #get first element of dataset
             x, y, wav = dataset[i]
@@ -58,10 +58,57 @@ def load_data(cfg):
             # print(f"wav shape: {wav.shape}")
 
             # plot mel spectrogram
-            # mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
+            mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
 
             #plot wav
-            # mic_utils.grid_plot_time_domain(wav, dataset.sample_rate)
+            mic_utils.grid_plot_time_domain(wav, dataset.sample_rate)
+
+    # sys.exit()
+
+    # split the dataset into train and validation 80/20
+    train_size = int(0.1 * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+
+    #USE SEQUENTIAL SPLIT
+    # Created using indices from 0 to train_size.
+    train_size = 0
+    train_dataset = torch.utils.data.Subset(dataset, range(train_size))
+    # Created using indices from train_size to the end.
+    val_dataset = torch.utils.data.Subset(dataset, range(train_size, len(dataset)))
+
+
+
+    #load train and val loader
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.batch_size, shuffle=False)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=cfg.val_batch_size, shuffle=False)
+
+    return train_loader, val_loader
+
+def load_data_eval(cfg, data_dir):
+    #load data
+    dataset = AudioDataset(cfg=cfg, data_dir = data_dir, transform = cfg.transform, augment = False)
+
+    #visuaize dataset
+    if cfg.visuaize_dataset:
+        for i in range(10):
+            
+            #get first element of dataset
+            x, y, wav = dataset[i]
+            #convert to numpy
+            x = x.numpy()
+            #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
+            x = [x[i] for i in range(x.shape[0])]
+            # print(f"size of x: {len(x)}")
+            # print(f"i: {i} and y: {y}")
+
+            # print(f"wav shape: {wav.shape}")
+
+            # plot mel spectrogram
+            mic_utils.plot_spectrogram_with_cfg(cfg, x, dataset.sample_rate)
+
+            #plot wav
+            mic_utils.grid_plot_time_domain(wav, dataset.sample_rate)
 
     # sys.exit()
 
@@ -86,7 +133,6 @@ def load_data(cfg):
     return train_loader, val_loader
 
 
-
 def calculate_radian_error(rad_pred, rad_val):
     """
     calculate the degree error between the predicted and ground truth radian values
@@ -109,26 +155,12 @@ def calculate_radian_error(rad_pred, rad_val):
 
     return radian_error
 
-@hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D_UMC')
-def main(cfg: DictConfig):
-    print(f" --------- eval --------- ")
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    print(f"device: {device}")
 
-
-    #load model.pth from checkpoint
-    model = CNNRegressor2D(cfg)
-    model.load_state_dict(torch.load(os.path.join(cfg.model_directory, 'model.pth')))
-
-    #verify if model is loaded by checking the model parameters
-    # print(model)
-    model.to(device)
-
-
-    #load data
-    train_loader, val_loader = load_data(cfg)
-
-    model.eval()
+def predict_and_eval(cfg, model, val_loader, device):
+    """
+    predict and evaluate the model
+    return MAE of height, xy, and degree
+    """
 
     height_error, xy_error = 0,0
     degree_error = 0
@@ -178,6 +210,16 @@ def main(cfg: DictConfig):
             x_val = Y_val[:,1]
             y_val = Y_val[:,2]
             radian_val = torch.atan2(y_val, x_val)
+            if cfg.offset_radian_rightside:
+                #offset the radian to the opposite side of the circle while handling the wrap around issue
+                radian_val = radian_val + math.pi
+                radian_val = torch.remainder(radian_val, 2*math.pi)
+            if cfg.offset_radian_lateralside:
+                #offset the radian for laterial strike (by -90 degrees) while handling the wrap around issue
+                radian_val = radian_val - math.pi/2
+                radian_val = torch.remainder(radian_val, 2*math.pi)
+                
+                
 
             #convert y_pred to radian
             radian_pred = torch.atan2(y_pred, x_pred)
@@ -195,6 +237,14 @@ def main(cfg: DictConfig):
             height_diff = height_pred - Y_val[:,0]
             x_diff = x_pred - Y_val[:,1]
             y_diff = y_pred - Y_val[:,2]
+
+            if cfg.offset_radian_lateralside:
+                print(f"height diff before: {height_diff}, length: {len(height_diff)}")
+                #discard every 5th element in the height_diff (keep 0-4, discard 5, keep 6-9, discard 10, etc.)
+                height_diff = [height_diff[i] for i in range(len(height_diff)) if i % 5 != 4]
+                #convert list to tensor
+                height_diff = torch.tensor(height_diff)
+                print(f"height diff after: {height_diff}, length: {len(height_diff)}")
 
             print(f"height pred: {height_pred}, height GT: {Y_val[:,0]}")
             print(f"rad pred: {radian_pred}, rad GT: {radian_val}")
@@ -223,22 +273,98 @@ def main(cfg: DictConfig):
     xy_error = (xy_error) / len(val_loader)
     degree_error = (degree_error) / len(val_loader)
 
-    error = height_error + xy_error
-    print(f"Mean Absolute Error: {error}, Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}")
+
+    print(f"MAE Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}")
 
     #save y_pred and y_val npy files
-    np.save('y_pred.npy', y_pred_list)
-    np.save('y_val.npy', y_val_list)
+    # np.save('y_pred.npy', y_pred_list)
+    # np.save('y_val.npy', y_val_list)
     
     #convert list to numpy array
-    y_pred_list = np.array(y_pred_list)
-    y_val_list = np.array(y_val_list)
+    # y_pred_list = np.array(y_pred_list)
+    # y_val_list = np.array(y_val_list)
 
     #plot regression line
     # eval_utils.plot_regression(cfg,y_pred_list, y_val_list)
 
 
-    return error
+    return height_error, xy_error, degree_error
+
+
+@hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D_UMC')
+def main(cfg: DictConfig):
+    print(f" --------- eval --------- ")
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    print(f"device: {device}")
+
+
+    #load model.pth from checkpoint
+    model = CNNRegressor2D(cfg)
+    model.load_state_dict(torch.load(os.path.join(cfg.model_directory, 'model.pth')))
+
+    #verify if model is loaded by checking the model parameters
+    # print(model)
+    model.to(device)
+
+    #list of eval data directories to iterate over
+    data_dir_list1 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T12L42_Y_25/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T12L42_Y_35/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T12L42_Y_40/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_25/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_35/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_40/', 
+                     '/home/mark/audio_learning_project/data/test_generalization/stick_T25L42_Y_25/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T25L42_Y_35/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T25L42_Y_40/',
+                      '/home/mark/audio_learning_project/data/test_generalization/stick_T32L42_Y_25/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T32L42_Y_35/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T32L42_Y_40/'   ] #test set that contains training set data
+    
+    data_dir_list2 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T22L80_Y_25/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T22L80_Y_35/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T22L80_Y_40/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T50L42_Y_25/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T50L42_Y_35/',
+                    '/home/mark/audio_learning_project/data/test_generalization/stick_T50L42_Y_40/' ] # val set that contains novel stick data
+    
+    data_dir_list3 = ['/home/mark/audio_learning_project/data/test_generalization/cross_easy_Y_25_Left/',
+                    '/home/mark/audio_learning_project/data/test_generalization/cross_easy_Y_25_Right/',
+                    '/home/mark/audio_learning_project/data/test_generalization/cross_easy_Y_32_Left/',
+                    '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_10_Left/',
+                    '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_15_Left/' ] # val set that contains novel obj data
+    
+
+    data_dir_list = data_dir_list3 #choose the data_dir_list to use
+
+    num_eval_dirs = len(data_dir_list)
+
+    model.eval()
+
+    height_error_list = []
+    xy_error_list = []
+    degree_error_list = []
+
+    #predict and evaluate
+    for eval_dir in data_dir_list:
+
+        #load data
+        train_loader, val_loader = load_data_eval(cfg, data_dir = eval_dir)
+
+        #predict and evaluate
+        height_error, xy_error, degree_error = predict_and_eval(cfg, model, val_loader, device)
+
+        #append to list
+        height_error_list.append(height_error)
+        xy_error_list.append(xy_error)
+        degree_error_list.append(degree_error)
+    
+    #average the errors
+    height_error_avg = sum(height_error_list) / num_eval_dirs
+    xy_error_avg = sum(xy_error_list) / num_eval_dirs
+    degree_error_avg = sum(degree_error_list) / num_eval_dirs
+
+    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}")
+    
 
 
 
