@@ -29,6 +29,8 @@ from datasets import load_data
 #models
 from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D, CNNRegressor1D, CNNRegressor_Classifier
+from models.Resnet import ResNet18_audio, ResNet50_audio
+from models.AudioSpectrogramTransformer import AST
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
@@ -187,12 +189,26 @@ def train_CNN(cfg,device, wandb, logger):
     """
     logger.log(" --------- training ---------")
 
+    #choose the model for training (CNN 7layer, ResNet50, AST)
+    # model = CNNRegressor2D(cfg)
+    
+    # model = ResNet50_audio(cfg)
+
+    model = AST(cfg)
+
+
+    model.to(device)
+    logger.log(f"model: {model}")
+
+    total_params = sum(p.numel() for p in model.parameters())
+    logger.log(f"Number of parameters: {total_params}")
+
+
     #load data
     train_loader, val_loader = load_data(cfg, train_or_val='train')
 
-    #model
-    model = CNNRegressor2D(cfg)
-
+    
+    
     if cfg.output_representation == 'height_radianclass':
         model = CNNRegressor_Classifier(cfg)
         criterion_classifier = torch.nn.CrossEntropyLoss()
@@ -226,15 +242,11 @@ def train_CNN(cfg,device, wandb, logger):
         criterion_list = [criterion_height, criterion_classifier]
         weight_list = [weight_height, weight_classifier]
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
     # Learning rate scheduler
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)  # Adjust step_size and gamma as needed
 
-    model.to(device)
-    logger.log(f"model: {model}")
-
-    total_params = sum(p.numel() for p in model.parameters())
-    logger.log(f"Number of parameters: {total_params}")
+    
 
     train_loss_history = []
     val_loss_history = []
@@ -489,8 +501,8 @@ def init_wandb(cfg):
         project=cfg.wandb_project,
         # track hyperparameters and run metadata
         config={
-        "learning_rate": 0.001,
-        "architecture": "Convblock3x",
+        "learning_rate": cfg.learning_rate,
+        "architecture": "res50",
         "batch_size": cfg.batch_size,
         }
     )
@@ -528,6 +540,7 @@ def main(cfg: DictConfig):
     logger.log(f"cfg: {cfg}")
 
     model, train_loss_history, val_loss_history = train_CNN(cfg,device, wandb, logger)
+
 
     
     # error = eval_random_prediction(cfg, device)

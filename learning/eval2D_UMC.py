@@ -30,6 +30,8 @@ from datasets import AudioDataset
 #models
 # from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D
+from models.Resnet import ResNet18_audio, ResNet50_audio
+from models.AudioSpectrogramTransformer import AST
 
 #eval
 from sklearn.metrics import mean_squared_error
@@ -300,6 +302,16 @@ def main(cfg: DictConfig):
 
     #load model.pth from checkpoint
     model = CNNRegressor2D(cfg)
+    # model = ResNet50_audio(cfg)
+    # model = AST(cfg)
+
+    print(f"model: {model}")
+
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Number of parameters: {total_params}")
+
+    
+
     model.load_state_dict(torch.load(os.path.join(cfg.model_directory, 'model.pth')))
 
     #verify if model is loaded by checking the model parameters
@@ -333,8 +345,11 @@ def main(cfg: DictConfig):
                     '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_10_Left/',
                     '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_15_Left/' ] # val set that contains novel obj data
     
+    data_dir_list4 = ['/home/mark/audio_learning_project/data/test_mapping/cross_easy_uniformexplore_v2/']
+    data_dir_list5 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_40_w_suctionv5/']
+    data_dir_list6 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T25L42_Y_25_consistent_test_noAmpl_100/']
 
-    data_dir_list = data_dir_list3 #choose the data_dir_list to use
+    data_dir_list = data_dir_list5 #choose the data_dir_list to use
 
     num_eval_dirs = len(data_dir_list)
 
