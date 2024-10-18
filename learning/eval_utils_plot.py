@@ -38,7 +38,7 @@ import microphone_utils as mic_utils
 
 
 import matplotlib.pyplot as plt
-
+import math
 
 torch.manual_seed(42)
 np.random.seed(42)
@@ -112,3 +112,27 @@ def plot_regression(cfg, y_pred_list, y_val_list):
     if cfg.visuaize_regression:
         plt.savefig(os.path.join(cfg.checkpoint_dir, 'plots.png'))
         plt.show()
+
+
+
+def calculate_radian_error(rad_pred, rad_val):
+    """
+    calculate the degree error between the predicted and ground truth radian values
+    This resolves wrap around issues
+    """
+    #diff = pred - GT
+    #add +pi
+    #mod by 2pi
+    #subtract pi
+
+    # print(f"0. rad_pred: {rad_pred}, rad_val: {rad_val}")
+    rad_diff = rad_pred - rad_val
+    # print(f"1. rad_diff: {rad_diff}")
+    rad_diff = rad_diff + math.pi
+    # print(f"2. rad_diff: {rad_diff}")
+    rad_diff = torch.remainder(rad_diff, 2*math.pi)
+    # print(f"3. rad_diff: {rad_diff}")
+    radian_error = rad_diff - math.pi
+    # print(f"4. radian_error: {radian_error}")
+
+    return radian_error

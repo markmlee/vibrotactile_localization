@@ -29,20 +29,23 @@ from datasets import load_data
 #models
 from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D, CNNRegressor1D, CNNRegressor_Classifier
-from models.Resnet import ResNet18_audio, ResNet50_audio
+from models.Resnet import ResNet18_audio, ResNet50_audio, ResNet50_audio_proprioceptive, ResNet50_audio_proprioceptive_dropout
 from models.AudioSpectrogramTransformer import AST
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
 
 from sklearn.metrics import accuracy_score
-import eval_utils as eval_utils
+import eval_utils_plot as eval_utils_plot
 
 #import function from another directory for plotting
 sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
 import microphone_utils as mic_utils
 
 
+#import function from another directory for helper func
+sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
+import eval_utils as pcloud_eval_utils
 
 
 
@@ -113,22 +116,24 @@ def eval_KNN(cfg, model):
     mse,y_pred_list, y_val_list = model.mae(x_val, y_val)
 
     #plot regression line
-    eval_utils.plot_regression(y_pred_list, y_val_list)
+    eval_utils_plot.plot_regression(y_pred_list, y_val_list)
 
 
     print(f" --------- evaluation complete ---------")
 
     return mse
 
-def model_prediction(cfg, device, model, x, y, criterion_list, weight_list):
+def model_prediction(cfg, device, model, x, y, qt, criterion_list, weight_list):
     """
     Called every batch to predict y values and return the loss 
     """
     x_, y_ = x.float().to(device), y.float().to(device)
+    qt_ = qt.float().to(device)
 
     # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
     
-    y_pred = model(x_) # --> CNN single-head output
+    # y_pred = model(x_) # --> CNN single-head output
+    y_pred = model(x_, qt_) # --> Audio + proprioceptive input
 
     if cfg.output_representation == 'height':
         y_pred_height = y_pred
@@ -193,8 +198,10 @@ def train_CNN(cfg,device, wandb, logger):
     # model = CNNRegressor2D(cfg)
     
     # model = ResNet50_audio(cfg)
+    # model = AST(cfg)
 
-    model = AST(cfg)
+    # model = ResNet50_audio_proprioceptive(cfg)
+    model = ResNet50_audio_proprioceptive_dropout(cfg)
 
 
     model.to(device)
@@ -261,7 +268,7 @@ def train_CNN(cfg,device, wandb, logger):
         model.train()
 
         #---------------------------- train ----------------------------
-        for _, (x, y, _) in enumerate(train_loader):
+        for _, (x, y, _, qt) in enumerate(train_loader):
 
             if cfg.visuaize_dataset:
                 mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
@@ -271,7 +278,7 @@ def train_CNN(cfg,device, wandb, logger):
             optimizer.zero_grad()
 
             # print(f"x shape in train: {x.shape}")
-            train_loss = model_prediction(cfg, device, model, x, y, criterion_list, weight_list)
+            train_loss = model_prediction(cfg, device, model, x, y, qt, criterion_list, weight_list)
             train_loss.backward()
             optimizer.step()
             epoch_train_loss += train_loss.item()
@@ -287,10 +294,10 @@ def train_CNN(cfg,device, wandb, logger):
 
             model.eval()
             
-            for _, (x, y, _) in enumerate(tqdm(val_loader)):
+            for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
                 with torch.no_grad():
 
-                    val_loss = model_prediction(cfg,device, model, x, y, criterion_list, weight_list)
+                    val_loss = model_prediction(cfg,device, model, x, y, qt, criterion_list, weight_list)
                     epoch_val_loss += val_loss.item()
                 
             epoch_val_loss = epoch_val_loss / len(val_loader)
@@ -341,7 +348,7 @@ def eval_random_prediction(cfg, device):
     y_val_list = []
     y_pred_list = []
 
-    for _, (x, y, _) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
 
         x_val, y_val = x.to(device), y.to(device)
 
@@ -375,7 +382,7 @@ def eval_random_prediction(cfg, device):
     print(f"size of y_pred_list, y_val_list: {len(y_pred_list)}, {len(y_val_list)}")
 
     #plot regression line
-    eval_utils.plot_regression(y_pred_list, y_val_list)
+    eval_utils_plot.plot_regression(y_pred_list, y_val_list)
 
 
     return error
@@ -389,21 +396,25 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
     height_error = 0
     xy_error = 0
+    deg_error = 0
+    MAE_error = 0
     y_val_list = []
     y_pred_list = []
 
     pred_label_list = []
     true_label_list = []
 
-    for _, (x, y, _) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
 
-        x_val, y_val = x.to(device), y.to(device)
+        x_input, Y_val = x.float().to(device), y.float().to(device)
+        qt_val = qt.float().to(device)
+
 
     
         with torch.no_grad():
 
             if cfg.output_representation == 'height_radianclass':
-                y_pred_height, y_pred_class = model(x_val)
+                y_pred_height, y_pred_class = model(x_input)
 
                 y_diff = y_pred_height - y_val[:,0]
 
@@ -417,7 +428,7 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
                 # print(f"h_pred: {y_pred_height}, h_val: {y_val[:,0]}")
                 
             elif cfg.output_representation == 'height':
-                y_pred = model(x_val)
+                y_pred = model(x_input)
 
                 #use only first column element of y_pred and y_val
 
@@ -435,30 +446,66 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
                 y_pred_list.extend(y_pred.cpu().numpy())
 
             else:
-                y_pred = model(x_val)
+                Y_output = model(x_input,  qt_val)
 
-                #use only first column element of y_pred and y_val
-                # y_pred = y_pred[:,0]
-                # y_val = y_val[:,0]
+                #split prediction to height and radian
+                height_pred = Y_output[:,0]
 
-                # print(f"y_pred: {y_pred}, y_val: {y_val}")
+                #clip height to [-11, +11]
+                height_pred = torch.clamp(height_pred, -11, 11)
+
+                x_pred = Y_output[:,1]
+                y_pred = Y_output[:,2]
+
+                #clip x and y to [-1, +1]
+                x_pred = torch.clamp(x_pred, -1, 1)
+                y_pred = torch.clamp(y_pred, -1, 1)
+
+                #convert y_val to radian
+                x_val = Y_val[:,1]
+                y_val = Y_val[:,2]
+                radian_val = torch.atan2(y_val, x_val)
+
+                #convert y_pred to radian
+                radian_pred = torch.atan2(y_pred, x_pred)
+
+                #resolve wrap around angle issues
+                radian_error = eval_utils_plot.calculate_radian_error(radian_pred, radian_val)
+                degree_diff = torch.rad2deg(radian_error)
+
+                height_diff = height_pred - Y_val[:,0]
+                
+
+                x_diff = x_pred - x_val
                 y_diff = y_pred - y_val
-                # print(f"y_diff: {y_diff}")
-                height_diff = y_pred[:,0] - y_val[:,0]
-                x_diff = y_pred[:,1] - y_val[:,1]
-                y_diff = y_pred[:,2] - y_val[:,2]
 
                 xy_diff = x_diff + y_diff
+
+                
 
                 #get absolute error
                 height_error += torch.mean(torch.abs(height_diff))
                 xy_error += torch.mean(torch.abs(xy_diff))
-        
+                deg_error += torch.mean(torch.abs(degree_diff))
+
+                # ------------------------------------------
+
+                # convert to xyz point
+                pt_predict = pcloud_eval_utils.convert_h_rad_to_xyz(height_pred.cpu().numpy(), radian_pred.cpu().numpy(), cfg.cylinder_radius)
+                pt_gt = pcloud_eval_utils.convert_h_rad_to_xyz(Y_val[:,0].cpu().numpy(), radian_val.cpu().numpy(), cfg.cylinder_radius)
+
+                # get MAE between 2 pts
+                MAE_pt = pcloud_eval_utils.compute_MAE_contact_point([pt_predict], [pt_gt])
+
+                # ------------------------------------------
+
+                MAE_error += MAE_pt
+
         
           
                 #get tensor values and append them to list
-                y_val_list.extend(y_val.cpu().numpy())
-                y_pred_list.extend(y_pred.cpu().numpy())
+                y_val_list.extend(Y_val.cpu().numpy())
+                y_pred_list.extend(Y_output.cpu().numpy())
         
 
     if cfg.output_representation == 'height_radianclass':
@@ -469,8 +516,10 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
         #sum up the rmse and divide by number of batches
         height_error = height_error / len(val_loader)
         xy_error = xy_error / len(val_loader)
+        deg_error = deg_error / len(val_loader)
+        MAE_error = MAE_error / len(val_loader)
 
-        logger.log(f"Height Error: {height_error}, xy Error: {xy_error}")
+        logger.log(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {deg_error}, MAE Error: {MAE_error}")
 
         #stack the list of array to numpy array
         y_val_list = np.stack(y_val_list)
@@ -478,10 +527,8 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
         if cfg.visuaize_regression:
             #plot regression line
-            eval_utils.plot_regression(cfg, y_pred_list, y_val_list)
+            eval_utils_plot.plot_regression(cfg, y_pred_list, y_val_list)
 
-        
-        
 
 
     return height_error

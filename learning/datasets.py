@@ -80,6 +80,7 @@ class AudioDataset(Dataset):
         self.X_mic_data = []
         self.Y_label_data = []
         self.wav_data_list = []
+        self.qt_data_list = []
 
         #load background noise
         print(f" --------- loading background noise ---------")
@@ -89,13 +90,14 @@ class AudioDataset(Dataset):
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
             print(f"loading trial: {trial_n}")
-            x_data, y_label, wav_data = self.load_xy_single_trial(self.cfg, trial_n)
+            x_data, y_label, wav_data, qt_data = self.load_xy_single_trial(self.cfg, trial_n)
 
             # print(f"size of x_data: {x_data.size()}")
 
             self.X_mic_data.append(x_data)
             self.Y_label_data.append(y_label)
             self.wav_data_list.append(wav_data)
+            self.qt_data_list.append(qt_data)
 
         print(f"size of X_mic_data: {len(self.X_mic_data)}") #--> 100 trials
         self.X_mic_data = torch.stack(self.X_mic_data)  # Shape: [len_data, num_mics, num_mels, num_bins_time]
@@ -146,6 +148,7 @@ class AudioDataset(Dataset):
         
         wavs = []
         melspecs = []
+        qt = None
 
         for i in range(len(cfg.device_list)):
             wav_filename = f"{self.dir[trial_n]}/mic{self.cfg.device_list[i]}.wav"
@@ -162,7 +165,15 @@ class AudioDataset(Dataset):
 
             # print(f"size of wav {wav.size()}") # --> torch.Size([6, 88200])
 
-            
+            #extract robot propriocetion data (joint trajectory)
+            qt_filename = f"{self.dir[trial_n]}/q_t.npy"
+            qt = np.load(qt_filename)
+
+        # print(f"size of qt: {qt.shape}") #--> size of qt: (200, 6)
+        # extract only the first 100 samples (1 sec) of the joint trajectory
+        qt = qt[:100]
+
+
         # print(f"len of wavs {len(wavs)}") # --> 1 
         #convert [ torch.Size([6, 88200]) ] into list of 6 items with 88200
         wavs_list = []
@@ -283,7 +294,7 @@ class AudioDataset(Dataset):
         # #convert to tensor
         # label = torch.tensor(label, dtype=torch.float32)
 
-        return data, label, wav_tensor
+        return data, label, wav_tensor, qt
     
     def __len__(self):
         return len(self.dir)
@@ -291,6 +302,7 @@ class AudioDataset(Dataset):
     def __getitem__(self, idx):
         x,y = self.X_mic_data[idx], self.Y_label_data[idx] # --> x: full 2 sec wav/spectrogram
         wav = self.wav_data_list[idx]
+        qt = self.qt_data_list[idx]
         # print(f"index of x: {idx}, y: {y}")
 
         # print(f"shape of x: {x.size()}") #--> shape of x: torch.Size([6, 16, 690]
@@ -340,7 +352,7 @@ class AudioDataset(Dataset):
 
         
         # print(f"size of x after augmentation: {x.size()}") #--> size of x after augmentation: torch.Size([6, 16, 276])
-        return x,y, wav 
+        return x,y, wav, qt
 
 
 

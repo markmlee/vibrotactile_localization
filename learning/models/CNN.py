@@ -208,3 +208,4 @@ class CNNRegressor_Classifier(nn.Module):
         class_output = self.fc_classification(xb)
 
         return reg_output, class_output
+    

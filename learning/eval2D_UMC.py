@@ -30,12 +30,17 @@ from datasets import AudioDataset
 #models
 # from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D
-from models.Resnet import ResNet18_audio, ResNet50_audio
+from models.Resnet import ResNet18_audio, ResNet50_audio, ResNet50_audio_proprioceptive, ResNet50_audio_proprioceptive_dropout
 from models.AudioSpectrogramTransformer import AST
 
 #eval
 from sklearn.metrics import mean_squared_error
-import eval_utils as eval_utils
+import eval_utils_plot as eval_utils_plot
+
+#import function from another directory for helper func
+sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
+import eval_utils as pcloud_eval_utils
+
 
 torch.manual_seed(42)
 
@@ -135,27 +140,6 @@ def load_data_eval(cfg, data_dir):
     return train_loader, val_loader
 
 
-def calculate_radian_error(rad_pred, rad_val):
-    """
-    calculate the degree error between the predicted and ground truth radian values
-    This resolves wrap around issues
-    """
-    #diff = pred - GT
-    #add +pi
-    #mod by 2pi
-    #subtract pi
-
-    # print(f"0. rad_pred: {rad_pred}, rad_val: {rad_val}")
-    rad_diff = rad_pred - rad_val
-    # print(f"1. rad_diff: {rad_diff}")
-    rad_diff = rad_diff + math.pi
-    # print(f"2. rad_diff: {rad_diff}")
-    rad_diff = torch.remainder(rad_diff, 2*math.pi)
-    # print(f"3. rad_diff: {rad_diff}")
-    radian_error = rad_diff - math.pi
-    # print(f"4. radian_error: {radian_error}")
-
-    return radian_error
 
 
 def predict_and_eval(cfg, model, val_loader, device):
@@ -166,10 +150,11 @@ def predict_and_eval(cfg, model, val_loader, device):
 
     height_error, xy_error = 0,0
     degree_error = 0
+    MAE_error = 0
     y_val_list = []
     y_pred_list = []
 
-    for _, (x, y, _) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
 
         #plot spectrogram for all data
         # mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
@@ -189,9 +174,11 @@ def predict_and_eval(cfg, model, val_loader, device):
             #     mic_utils.plot_spectrogram_with_cfg(cfg, x_input_list[i], cfg.sample_rate)
 
         x_input, Y_val = x.float().to(device), y.float().to(device)
+        qt_val = qt.float().to(device)
 
         with torch.no_grad():
-            Y_output = model(x_input) 
+            # Y_output = model(x_input) # --> single input model
+            Y_output = model(x_input, qt_val)
 
             #split prediction to height and radian
             height_pred = Y_output[:,0]
@@ -227,7 +214,7 @@ def predict_and_eval(cfg, model, val_loader, device):
             radian_pred = torch.atan2(y_pred, x_pred)
 
             #resolve wrap around angle issues
-            radian_error = calculate_radian_error(radian_pred, radian_val)
+            radian_error = eval_utils_plot.calculate_radian_error(radian_pred, radian_val)
             degree_diff = torch.rad2deg(radian_error)
 
             
@@ -239,6 +226,9 @@ def predict_and_eval(cfg, model, val_loader, device):
             height_diff = height_pred - Y_val[:,0]
             x_diff = x_pred - Y_val[:,1]
             y_diff = y_pred - Y_val[:,2]
+
+            
+
 
             if cfg.offset_radian_lateralside:
                 print(f"height diff before: {height_diff}, length: {len(height_diff)}")
@@ -260,6 +250,19 @@ def predict_and_eval(cfg, model, val_loader, device):
             degree_error  += torch.mean(torch.abs(torch.rad2deg(radian_error) ) )
             xy_error += torch.mean(torch.abs(x_diff) + torch.abs(y_diff))
 
+            # ------------------------------------------
+
+            # convert to xyz point
+            pt_predict = pcloud_eval_utils.convert_h_rad_to_xyz(height_pred.cpu().numpy(), radian_pred.cpu().numpy(), cfg.cylinder_radius)
+            pt_gt = pcloud_eval_utils.convert_h_rad_to_xyz(Y_val[:,0].cpu().numpy(), radian_val.cpu().numpy(), cfg.cylinder_radius)
+
+            # get MAE between 2 pts
+            MAE_pt = pcloud_eval_utils.compute_MAE_contact_point([pt_predict], [pt_gt])
+
+            # ------------------------------------------
+
+            MAE_error += MAE_pt
+
             #combine height and radian to y_pred
             y_pred = torch.stack((height_pred, x_pred, y_pred), dim=1)
             y_val_ = torch.stack((Y_val[:,0], x_val, y_val), dim=1)
@@ -274,9 +277,10 @@ def predict_and_eval(cfg, model, val_loader, device):
     height_error = (height_error) / len(val_loader)
     xy_error = (xy_error) / len(val_loader)
     degree_error = (degree_error) / len(val_loader)
+    MAE_error = (MAE_error) / len(val_loader)
 
 
-    print(f"MAE Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}")
+    print(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}, MAE Error: {MAE_error}")
 
     #save y_pred and y_val npy files
     # np.save('y_pred.npy', y_pred_list)
@@ -290,7 +294,7 @@ def predict_and_eval(cfg, model, val_loader, device):
     # eval_utils.plot_regression(cfg,y_pred_list, y_val_list)
 
 
-    return height_error, xy_error, degree_error
+    return height_error, xy_error, degree_error, MAE_error
 
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D_UMC')
@@ -301,9 +305,12 @@ def main(cfg: DictConfig):
 
 
     #load model.pth from checkpoint
-    model = CNNRegressor2D(cfg)
+    # model = CNNRegressor2D(cfg)
     # model = ResNet50_audio(cfg)
     # model = AST(cfg)
+    # model = ResNet50_audio_proprioceptive(cfg)
+    model = ResNet50_audio_proprioceptive_dropout(cfg)
+
 
     print(f"model: {model}")
 
@@ -349,7 +356,9 @@ def main(cfg: DictConfig):
     data_dir_list5 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_40_w_suctionv5/']
     data_dir_list6 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T25L42_Y_25_consistent_test_noAmpl_100/']
 
-    data_dir_list = data_dir_list5 #choose the data_dir_list to use
+    data_dir_debug = ['/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v2_mini/']
+
+    data_dir_list = data_dir_list3 #choose the data_dir_list to use
 
     num_eval_dirs = len(data_dir_list)
 
@@ -358,6 +367,7 @@ def main(cfg: DictConfig):
     height_error_list = []
     xy_error_list = []
     degree_error_list = []
+    MAE_error_list = []
 
     #predict and evaluate
     for eval_dir in data_dir_list:
@@ -366,19 +376,22 @@ def main(cfg: DictConfig):
         train_loader, val_loader = load_data_eval(cfg, data_dir = eval_dir)
 
         #predict and evaluate
-        height_error, xy_error, degree_error = predict_and_eval(cfg, model, val_loader, device)
+        height_error, xy_error, degree_error, MAE_error = predict_and_eval(cfg, model, val_loader, device)
 
         #append to list
         height_error_list.append(height_error)
         xy_error_list.append(xy_error)
         degree_error_list.append(degree_error)
+        MAE_error_list.append(MAE_error)
+
     
     #average the errors
     height_error_avg = sum(height_error_list) / num_eval_dirs
     xy_error_avg = sum(xy_error_list) / num_eval_dirs
     degree_error_avg = sum(degree_error_list) / num_eval_dirs
+    MAE_error_avg = sum(MAE_error_list) / num_eval_dirs
 
-    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}")
+    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}, MAE_error_avg: {MAE_error_avg}")
     
 
 
