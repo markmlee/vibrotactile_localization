@@ -150,7 +150,7 @@ def predict_and_eval(cfg, model, val_loader, device):
 
     height_error, xy_error = 0,0
     degree_error = 0
-    MAE_error = 0
+    MED_error = 0
     y_val_list = []
     y_pred_list = []
 
@@ -177,8 +177,8 @@ def predict_and_eval(cfg, model, val_loader, device):
         qt_val = qt.float().to(device)
 
         with torch.no_grad():
-            # Y_output = model(x_input) # --> single input model
-            Y_output = model(x_input, qt_val)
+            Y_output = model(x_input) # --> single input model
+            # Y_output = model(x_input, qt_val)
 
             #split prediction to height and radian
             height_pred = Y_output[:,0]
@@ -257,11 +257,11 @@ def predict_and_eval(cfg, model, val_loader, device):
             pt_gt = pcloud_eval_utils.convert_h_rad_to_xyz(Y_val[:,0].cpu().numpy(), radian_val.cpu().numpy(), cfg.cylinder_radius)
 
             # get MAE between 2 pts
-            MAE_pt = pcloud_eval_utils.compute_MAE_contact_point([pt_predict], [pt_gt])
+            MED_pt = pcloud_eval_utils.compute_euclidean_distance([pt_predict], [pt_gt])
 
             # ------------------------------------------
 
-            MAE_error += MAE_pt
+            MED_error += MED_pt
 
             #combine height and radian to y_pred
             y_pred = torch.stack((height_pred, x_pred, y_pred), dim=1)
@@ -277,10 +277,10 @@ def predict_and_eval(cfg, model, val_loader, device):
     height_error = (height_error) / len(val_loader)
     xy_error = (xy_error) / len(val_loader)
     degree_error = (degree_error) / len(val_loader)
-    MAE_error = (MAE_error) / len(val_loader)
+    MED_error = (MED_error) / len(val_loader)
 
 
-    print(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}, MAE Error: {MAE_error}")
+    print(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}, Mean Eud Dist Error: {MED_error}")
 
     #save y_pred and y_val npy files
     # np.save('y_pred.npy', y_pred_list)
@@ -294,7 +294,7 @@ def predict_and_eval(cfg, model, val_loader, device):
     # eval_utils.plot_regression(cfg,y_pred_list, y_val_list)
 
 
-    return height_error, xy_error, degree_error, MAE_error
+    return height_error, xy_error, degree_error, MED_error
 
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D_UMC')
@@ -305,11 +305,11 @@ def main(cfg: DictConfig):
 
 
     #load model.pth from checkpoint
-    # model = CNNRegressor2D(cfg)
+    model = CNNRegressor2D(cfg)
     # model = ResNet50_audio(cfg)
     # model = AST(cfg)
     # model = ResNet50_audio_proprioceptive(cfg)
-    model = ResNet50_audio_proprioceptive_dropout(cfg)
+    # model = ResNet50_audio_proprioceptive_dropout(cfg)
 
 
     print(f"model: {model}")
@@ -358,7 +358,7 @@ def main(cfg: DictConfig):
 
     data_dir_debug = ['/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v2_mini/']
 
-    data_dir_list = data_dir_list3 #choose the data_dir_list to use
+    data_dir_list = data_dir_list1 #choose the data_dir_list to use
 
     num_eval_dirs = len(data_dir_list)
 
@@ -367,7 +367,7 @@ def main(cfg: DictConfig):
     height_error_list = []
     xy_error_list = []
     degree_error_list = []
-    MAE_error_list = []
+    MED_error_list = []
 
     #predict and evaluate
     for eval_dir in data_dir_list:
@@ -376,22 +376,22 @@ def main(cfg: DictConfig):
         train_loader, val_loader = load_data_eval(cfg, data_dir = eval_dir)
 
         #predict and evaluate
-        height_error, xy_error, degree_error, MAE_error = predict_and_eval(cfg, model, val_loader, device)
+        height_error, xy_error, degree_error, MED_error = predict_and_eval(cfg, model, val_loader, device)
 
         #append to list
         height_error_list.append(height_error)
         xy_error_list.append(xy_error)
         degree_error_list.append(degree_error)
-        MAE_error_list.append(MAE_error)
+        MED_error_list.append(MED_error)
 
     
     #average the errors
     height_error_avg = sum(height_error_list) / num_eval_dirs
     xy_error_avg = sum(xy_error_list) / num_eval_dirs
     degree_error_avg = sum(degree_error_list) / num_eval_dirs
-    MAE_error_avg = sum(MAE_error_list) / num_eval_dirs
+    MED_error_avg = sum(MED_error_list) / num_eval_dirs
 
-    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}, MAE_error_avg: {MAE_error_avg}")
+    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}, MED_error_avg: {MED_error_avg}")
     
 
 

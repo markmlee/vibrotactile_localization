@@ -53,75 +53,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 
-    
 
-def train_KNN(cfg):
-    """
-    model = train(cfg)
-    error = eval(cfg, model)
-    """
-    print(f" --------- training ---------")
-
-    #load data
-    train_loader, val_loader = load_data(cfg, train_of_val='train')
-
-    
-    x_train, y_train = None, None
-
-    #train KNN & SVM by looping once through trainloader. 
-    #MAKE SURE BATCHSIZE IS SET TO LENGTH(DATASET)
-    for i, (x, y,_) in enumerate(tqdm(train_loader)):
-        x_train, y_train = x, y
-
-    print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
-
-    #flatten x_train feature to be ([80, 6*40*690]) 
-    x_train = x_train.view(x_train.size(0), -1)
-    print(f"flattened x_train shape: {x_train.shape}") #--> torch.Size([80, 165600])
-    #model
-    model = KNN()
-    print(f" fitting model ")
-    model.fit(x_train, y_train)
-
-
-    
-
-    print(f" --------- training complete ---------")
-    return model
-
-def eval_KNN(cfg, model):
-    """
-    model = train(cfg)
-    error = eval(cfg, model)
-    """
-    print(f" --------- evaluating ---------")
-
-    #load data
-    train_loader, val_loader = load_data(cfg, train_or_val='val')
-
-    x_val, y_val = None, None
-
-    #train KNN & SVM by looping once through trainloader. 
-    #MAKE SURE BATCHSIZE IS SET TO LENGTH(DATASET)
-    for i, (x, y,_) in enumerate(tqdm(val_loader)):
-        x_val, y_val = x, y
-
-    print(f"shapes of x_train, y_train: {x_val.shape}, {y_val.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
-
-    #flatten x_train feature to be ([80, 6*40*690]) 
-    x_val = x_val.view(x_val.size(0), -1)
-    print(f"flattened x_train shape: {x_val.shape}") #--> torch.Size([80, 165600])
-
-    #get MSE of prediction
-    mse,y_pred_list, y_val_list = model.mae(x_val, y_val)
-
-    #plot regression line
-    eval_utils_plot.plot_regression(y_pred_list, y_val_list)
-
-
-    print(f" --------- evaluation complete ---------")
-
-    return mse
 
 def model_prediction(cfg, device, model, x, y, qt, criterion_list, weight_list):
     """
@@ -132,8 +64,9 @@ def model_prediction(cfg, device, model, x, y, qt, criterion_list, weight_list):
 
     # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
     
-    # y_pred = model(x_) # --> CNN single-head output
-    y_pred = model(x_, qt_) # --> Audio + proprioceptive input
+    #TODO: MODIFY HERE TO USE THE RIGHT MODEL
+    y_pred = model(x_) # --> CNN single-head output
+    # y_pred = model(x_, qt_) # --> Audio + proprioceptive input
 
     if cfg.output_representation == 'height':
         y_pred_height = y_pred
@@ -194,14 +127,15 @@ def train_CNN(cfg,device, wandb, logger):
     """
     logger.log(" --------- training ---------")
 
+    #TODO: MODIFY HERE TO USE THE RIGHT MODEL
     #choose the model for training (CNN 7layer, ResNet50, AST)
-    # model = CNNRegressor2D(cfg)
+    model = CNNRegressor2D(cfg)
     
     # model = ResNet50_audio(cfg)
     # model = AST(cfg)
 
     # model = ResNet50_audio_proprioceptive(cfg)
-    model = ResNet50_audio_proprioceptive_dropout(cfg)
+    # model = ResNet50_audio_proprioceptive_dropout(cfg)
 
 
     model.to(device)
@@ -446,7 +380,9 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
                 y_pred_list.extend(y_pred.cpu().numpy())
 
             else:
-                Y_output = model(x_input,  qt_val)
+                #TODO: MODIFY HERE TO USE THE RIGHT MODEL
+                Y_output = model(x_input)
+                # Y_output = model(x_input,  qt_val)
 
                 #split prediction to height and radian
                 height_pred = Y_output[:,0]
