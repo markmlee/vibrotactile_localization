@@ -30,7 +30,10 @@ from datasets import load_data
 from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D, CNNRegressor1D, CNNRegressor_Classifier
 from models.Resnet import ResNet18_audio, ResNet50_audio, ResNet50_audio_proprioceptive, ResNet50_audio_proprioceptive_dropout
-from models.AudioSpectrogramTransformer import AST
+from models.AudioSpectrogramTransformer import AST, AST_multimodal, AST_multimodal_qt
+from models.multimodal_transformer import MultiModalTransformer
+from models.multimodal_transformer_xt_xdot import MultiModalTransformer_xt_xdot_t
+from models.multimodal_transformer_xt_xdot_gcc import MultiModalTransformer_xt_xdot_t_gccphat
 
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
@@ -55,18 +58,27 @@ np.random.seed(42)
 
 
 
-def model_prediction(cfg, device, model, x, y, qt, criterion_list, weight_list):
+def model_prediction(cfg, device, model, x, y, qt, xt, xdot_t, tdoa, gcc_matrix, criterion_list, weight_list):
     """
     Called every batch to predict y values and return the loss 
     """
     x_, y_ = x.float().to(device), y.float().to(device)
     qt_ = qt.float().to(device)
+    xt_ = xt.float().to(device)
+    xdot_t_ = xdot_t.float().to(device)
+    tdoa_ = tdoa.float().to(device)
+    gcc_matrix_ = gcc_matrix.float().to(device)
 
     # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
-    
+    #TODO: concat xt_ and xdot_t_
+    # print(f"xt_: {xt_.shape}, xdot_t_: {xdot_t_.shape}") #--> xt_: torch.Size([8, 50, 7]), xdot_t_: torch.Size([8, 50, 3])
+    xt_xdot_t = torch.cat((xt_, xdot_t_), dim=2)
+
     #TODO: MODIFY HERE TO USE THE RIGHT MODEL
-    y_pred = model(x_) # --> CNN single-head output
-    # y_pred = model(x_, qt_) # --> Audio + proprioceptive input
+    # y_pred = model(x_) # --> CNN single-head output
+    # y_pred = model(x_, xt_xdot_t) # --> Audio + proprioceptive input
+    # y_pred = model(x_, qt_, tdoa_) # --> Audio + proprioceptive + tdoa input
+    y_pred = model(x_, xt_xdot_t, gcc_matrix_) # --> Audio + proprioceptive + gcc input
 
     if cfg.output_representation == 'height':
         y_pred_height = y_pred
@@ -129,13 +141,19 @@ def train_CNN(cfg,device, wandb, logger):
 
     #TODO: MODIFY HERE TO USE THE RIGHT MODEL
     #choose the model for training (CNN 7layer, ResNet50, AST)
-    model = CNNRegressor2D(cfg)
+    # model = CNNRegressor2D(cfg)
     
     # model = ResNet50_audio(cfg)
     # model = AST(cfg)
+    # model = AST_multimodal(cfg)
+    # model = AST_multimodal_qt(cfg)
 
     # model = ResNet50_audio_proprioceptive(cfg)
     # model = ResNet50_audio_proprioceptive_dropout(cfg)
+
+    # model = MultiModalTransformer(cfg)
+    # model = MultiModalTransformer_xt_xdot_t(cfg)
+    model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
 
 
     model.to(device)
@@ -202,7 +220,7 @@ def train_CNN(cfg,device, wandb, logger):
         model.train()
 
         #---------------------------- train ----------------------------
-        for _, (x, y, _, qt) in enumerate(train_loader):
+        for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc_matrix) in enumerate(train_loader):
 
             if cfg.visuaize_dataset:
                 mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
@@ -212,7 +230,7 @@ def train_CNN(cfg,device, wandb, logger):
             optimizer.zero_grad()
 
             # print(f"x shape in train: {x.shape}")
-            train_loss = model_prediction(cfg, device, model, x, y, qt, criterion_list, weight_list)
+            train_loss = model_prediction(cfg, device, model, x, y, qt, xt, xdot_t, tdoa, gcc_matrix, criterion_list, weight_list)
             train_loss.backward()
             optimizer.step()
             epoch_train_loss += train_loss.item()
@@ -228,10 +246,10 @@ def train_CNN(cfg,device, wandb, logger):
 
             model.eval()
             
-            for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
+            for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc_matrix) in enumerate(tqdm(val_loader)):
                 with torch.no_grad():
 
-                    val_loss = model_prediction(cfg,device, model, x, y, qt, criterion_list, weight_list)
+                    val_loss = model_prediction(cfg,device, model, x, y, qt, xt, xdot_t, tdoa, gcc_matrix, criterion_list, weight_list)
                     epoch_val_loss += val_loss.item()
                 
             epoch_val_loss = epoch_val_loss / len(val_loader)
@@ -282,7 +300,7 @@ def eval_random_prediction(cfg, device):
     y_val_list = []
     y_pred_list = []
 
-    for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc_matrix) in enumerate(tqdm(val_loader)):
 
         x_val, y_val = x.to(device), y.to(device)
 
@@ -338,12 +356,17 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
     pred_label_list = []
     true_label_list = []
 
-    for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
+    for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc_matrix) in enumerate(tqdm(val_loader)):
 
         x_input, Y_val = x.float().to(device), y.float().to(device)
         qt_val = qt.float().to(device)
+        xt_val = xt.float().to(device)
+        xdot_t_val = xdot_t.float().to(device)
+        tdoa_val = tdoa.float().to(device)
+        gcc_matrix_val = gcc_matrix.float().to(device)
 
-
+        #TODO: concat xt_val and xdot_t_val
+        xt_xdot_t_val = torch.cat((xt_val, xdot_t_val), dim=2)
     
         with torch.no_grad():
 
@@ -381,8 +404,10 @@ def evaluate_CNN(cfg, model, device, val_loader, logger):
 
             else:
                 #TODO: MODIFY HERE TO USE THE RIGHT MODEL
-                Y_output = model(x_input)
-                # Y_output = model(x_input,  qt_val)
+                # Y_output = model(x_input)
+                # Y_output = model(x_input,  xt_xdot_t_val)
+                # Y_output = model(x_input, qt_val, tdoa_val)
+                Y_output = model(x_input, xt_xdot_t_val, gcc_matrix_val)
 
                 #split prediction to height and radian
                 height_pred = Y_output[:,0]
@@ -492,6 +517,10 @@ def init_wandb(cfg):
 # ==================================================================================================
 
     return wandb
+
+
+
+
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'train2D_UMC')
 def main(cfg: DictConfig):

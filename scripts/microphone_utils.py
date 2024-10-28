@@ -8,6 +8,9 @@ import argparse
 import queue
 import sys
 
+from itertools import combinations
+
+
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,6 +27,7 @@ import torchaudio
 import os
 import torch.nn.functional as F
 import noisereduce as nr
+
 
 
 
@@ -1215,3 +1219,192 @@ def preprocess_data(mic_signals_from_all_trials, GT_labels):
     #return list of [X,Y]
     return [X_list, Y_list]
 
+
+def compute_gcc_phat_pair(x: torch.Tensor, y: torch.Tensor, fs: int = 44100, max_tau: float = 0.01):
+    """
+    Compute GCC-PHAT between a pair of signals
+    
+    Parameters:
+    -----------
+    x : torch.Tensor
+        First signal [n_samples]
+    y : torch.Tensor
+        Second signal [n_samples]
+    fs : int
+        Sampling frequency (default: 44100)
+    max_tau : float
+        Maximum time lag in seconds (default: 10ms)
+    
+    Returns:
+    --------
+    gcc : torch.Tensor
+        GCC-PHAT result [n_time_lags]
+    tau : torch.Tensor
+        Time lag axis in seconds [n_time_lags]
+    """
+    # Calculate number of lag points
+    max_lag_samples = int(max_tau * fs)
+    
+    # Compute FFT
+    X = torch.fft.rfft(x)
+    Y = torch.fft.rfft(y)
+    
+    # Cross-spectrum
+    Gxy = X * Y.conj()
+    
+    # PHAT weighting
+    eps = 1e-10
+    Gxy_phat = Gxy / (torch.abs(Gxy) + eps)
+    
+    # IFFT
+    gcc = torch.fft.irfft(Gxy_phat)
+    
+    # Limit to max lag and shift
+    gcc = torch.cat((gcc[-max_lag_samples:], gcc[:max_lag_samples+1]))
+    
+    # Create time lag axis
+    tau = torch.linspace(-max_tau, max_tau, 2*max_lag_samples+1)
+    
+    return gcc, tau
+
+def compute_gcc_phat_matrix(signals: torch.Tensor, fs: int = 44100, max_tau: float = 0.01):
+    """
+    Compute GCC-PHAT for all microphone pairs from multichannel wav file
+    
+    Parameters:
+    -----------
+    signals : torch.Tensor
+        Microphone signals [n_mics=6, n_samples=66150]
+    fs : int
+        Sampling frequency (default: 44100)
+    max_tau : float
+        Maximum time lag in seconds (default: 10ms)
+    
+    Returns:
+    --------
+    gcc_matrix : torch.Tensor
+        GCC-PHAT results [n_pairs=15, n_time_lags]
+    tau : torch.Tensor
+        Time lag axis in seconds [n_time_lags]
+    pairs : list
+        List of microphone pairs
+    """
+    # Input validation
+    assert signals.dim() == 2, f"Expected 2D tensor, got {signals.dim()}D"
+    assert signals.shape[0] == 6, f"Expected 6 channels, got {signals.shape[0]}"
+    
+    # Generate all microphone pairs
+    pairs = list(combinations(range(6), 2))  # 15 pairs
+
+    # print(f"pairs: {pairs}")
+    
+    # Compute first pair to get output size
+    gcc, tau = compute_gcc_phat_pair(signals[0], signals[1], fs, max_tau)
+    
+    # print(f"dimensions of gcc: {gcc.shape}, dim of tau: {tau.shape}")
+
+    # Initialize output matrix
+    gcc_matrix = torch.zeros(len(pairs), len(gcc))
+    gcc_matrix[0] = gcc
+    
+    # Compute GCC-PHAT for remaining pairs
+    for i, (mic1, mic2) in enumerate(pairs[1:], 1):
+        gcc_matrix[i], _ = compute_gcc_phat_pair(signals[mic1], signals[mic2], fs, max_tau)
+    
+    # print(f"dimensions of gcc_matrix: {gcc_matrix.shape}")
+
+    return gcc_matrix, tau, pairs
+
+def plot_gcc_phat_results(gcc_matrix: torch.Tensor, tau: torch.Tensor, pairs: list, 
+                         figsize=(15, 20)):
+    """
+    Visualize GCC-PHAT results for all microphone pairs
+    
+    Parameters:
+    -----------
+    gcc_matrix : torch.Tensor
+        GCC-PHAT results [15, n_time_lags]
+    tau : torch.Tensor
+        Time lag axis in seconds
+    pairs : list
+        List of microphone pairs
+    figsize : tuple
+        Figure size (width, height)
+    """
+    # Convert to milliseconds for better readability
+    tau_ms = tau * 1000
+    
+    # Create subplots (3 columns x 5 rows)
+    fig, axes = plt.subplots(5, 3, figsize=figsize)
+    fig.suptitle('GCC-PHAT Results for All Microphone Pairs', fontsize=16)
+    
+    # Plot each pair
+    for i, ((mic1, mic2), ax) in enumerate(zip(pairs, axes.flatten())):
+        # Plot GCC-PHAT
+        ax.plot(tau_ms, gcc_matrix[i])
+        
+        # Find and mark the peak
+        peak_idx = torch.argmax(gcc_matrix[i])
+        peak_time = tau_ms[peak_idx]
+        peak_value = gcc_matrix[i][peak_idx]
+        
+        # Add peak marker
+        ax.plot(peak_time, peak_value, 'r*', markersize=10, 
+                label=f'Peak: {peak_time:.2f} ms')
+        
+        # Customize plot
+        ax.set_title(f'Mic {mic1} - Mic {mic2}')
+        ax.set_xlabel('Time Lag (ms)')
+        ax.set_ylabel('Correlation')
+        ax.grid(True)
+        ax.legend()
+        
+        # Set x-axis limits to ±10ms
+        ax.set_xlim([-10, 10])
+        
+        # Set y-axis limits with some padding
+        max_val = torch.max(gcc_matrix[i])
+        min_val = torch.min(gcc_matrix[i])
+        padding = 0.1 * (max_val - min_val)
+        ax.set_ylim([min_val - padding, max_val + padding])
+    
+    plt.tight_layout()
+    plt.show()
+
+    # Print peak time delays
+    print("\nPeak Time Delays:")
+    print("-----------------")
+    for i, (mic1, mic2) in enumerate(pairs):
+        peak_idx = torch.argmax(gcc_matrix[i])
+        peak_time = tau_ms[peak_idx]
+        print(f"Mic {mic1}-{mic2}: {peak_time:.2f} ms")
+
+def get_time_differences(gcc_matrix: torch.Tensor, tau: torch.Tensor):
+    """
+    Extract Time Difference of Arrival (TDOA) from GCC-PHAT matrix
+    
+    Parameters:
+    -----------
+    gcc_matrix : torch.Tensor
+        GCC-PHAT results [15, n_time_lags]
+    tau : torch.Tensor
+        Time lag axis in seconds
+
+    Returns:
+    --------
+    tdoa : torch.Tensor
+        Time differences [15] in seconds for each mic pair
+    tdoa_idx : torch.Tensor
+        Indices [15] of peak locations in gcc_matrix
+
+    """
+    # Find peaks for all pairs
+    tdoa_idx = torch.argmax(gcc_matrix, dim=1)
+    
+    # Get corresponding time delays
+    tdoa = tau[tdoa_idx]
+    
+    # convert to milliseconds
+    tdoa = tdoa * 1000
+    
+    return tdoa, tdoa_idx

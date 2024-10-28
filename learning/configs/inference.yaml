@@ -1,11 +1,11 @@
 #UPDATE PARAMS
-model_directory: /home/iam-lab/audio_localization/vibrotactile_localization/learning/outputs/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined_model
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/v2data_Multi_ResNet50_MLP_selfattn_xt_xdot_gcc #resnet50_qt_mini_dropout #resnet50_qt_mini_dropout #wood_suctionOnly_horizontal_opposite_verticalv2 #resnet_b256_lr1e3 #wood_suctionOnly_horizontal_opposite_verticalv2
 
 
 
 # ----- mic / data param -----
-background_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/franka_constant/background_noise/trial0/
-data_dir: /home/iam-lab/audio_localization/vibrotactile_localization/data/test_mapping/cross_easy2/
+background_dir: /home/mark/audio_learning_project/data/franka_constant/no_contact/trial0/
+data_dir: /home/mark/audio_learning_project/data/test_mapping/cross_easy_fullv2/ #cross_easy_fullv2/ #cross_easy_uniformexplore_v2/ #cross_easy_fullv2/ #test_generalization/cross_easy_X_15_Left/ #test_mapping/cross_easy_fullv2/
 transform: mel
 
 device_list: [2]
@@ -22,8 +22,8 @@ n_mels: 50
 resample_rate: 11025
 
 
-batch_size: 25
-val_batch_size: 25
+batch_size: 100
+val_batch_size: 100
 
 
 # ----- preprocessing parameters -----

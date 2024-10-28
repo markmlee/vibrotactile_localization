@@ -31,7 +31,10 @@ from datasets import AudioDataset
 # from models.KNN import KNN
 from models.CNN import CNNRegressor, CNNRegressor2D
 from models.Resnet import ResNet18_audio, ResNet50_audio, ResNet50_audio_proprioceptive, ResNet50_audio_proprioceptive_dropout
-from models.AudioSpectrogramTransformer import AST
+from models.AudioSpectrogramTransformer import AST, AST_multimodal
+from models.multimodal_transformer import MultiModalTransformer
+from models.multimodal_transformer_xt_xdot import MultiModalTransformer_xt_xdot_t
+from models.multimodal_transformer_xt_xdot_gcc import MultiModalTransformer_xt_xdot_t_gccphat
 
 #eval
 from sklearn.metrics import mean_squared_error
@@ -150,11 +153,14 @@ def predict_and_eval(cfg, model, val_loader, device):
 
     height_error, xy_error = 0,0
     degree_error = 0
-    MED_error = 0
+    MED_list = []
     y_val_list = []
     y_pred_list = []
 
-    for _, (x, y, _, qt) in enumerate(tqdm(val_loader)):
+    all_distances = []  # Store all individual distances
+
+
+    for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc) in enumerate(tqdm(val_loader)):
 
         #plot spectrogram for all data
         # mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
@@ -175,10 +181,21 @@ def predict_and_eval(cfg, model, val_loader, device):
 
         x_input, Y_val = x.float().to(device), y.float().to(device)
         qt_val = qt.float().to(device)
+        tdoa_val = tdoa.float().to(device)
+        xt_val = xt.float().to(device)
+        xdot_t_val = xdot_t.float().to(device)
+        gcc_val = gcc.float().to(device)
+
+        xt_xdot_t = torch.cat((xt_val, xdot_t_val), dim=2)
 
         with torch.no_grad():
-            Y_output = model(x_input) # --> single input model
+            #TODO: MODIFY ACCORDING TO MODEL
+            # Y_output = model(x_input) # --> single input model
             # Y_output = model(x_input, qt_val)
+            # Y_output = model(x_input, xt_val)
+            # Y_output = model(x_input, xt_xdot_t)
+            # Y_output = model(x_input, qt_val, tdoa_val)
+            Y_output = model(x_input, xt_xdot_t, gcc_val)
 
             #split prediction to height and radian
             height_pred = Y_output[:,0]
@@ -256,12 +273,26 @@ def predict_and_eval(cfg, model, val_loader, device):
             pt_predict = pcloud_eval_utils.convert_h_rad_to_xyz(height_pred.cpu().numpy(), radian_pred.cpu().numpy(), cfg.cylinder_radius)
             pt_gt = pcloud_eval_utils.convert_h_rad_to_xyz(Y_val[:,0].cpu().numpy(), radian_val.cpu().numpy(), cfg.cylinder_radius)
 
+            # get distances for all points in batch
+            # distances = np.sqrt(np.sum((pt_predict - pt_gt) ** 2, axis=1))  # Compute for each point in batch
+
+            source, target = [pt_predict], [pt_gt]
+            # Convert lists of points to numpy arrays
+            source_points = np.array([[pt.x, pt.y, pt.z] for pt in source])
+            target_points = np.array([[pt.x, pt.y, pt.z] for pt in target])
+
+            # Compute the Euclidean distance between the contact points
+            distances = np.linalg.norm(source_points - target_points, axis=1)
+
+            all_distances.extend(distances)  # Add all distances from this batch
+
             # get MAE between 2 pts
-            MED_pt = pcloud_eval_utils.compute_euclidean_distance([pt_predict], [pt_gt])
+            # MED_pt = pcloud_eval_utils.compute_euclidean_distance([pt_predict], [pt_gt])
 
             # ------------------------------------------
 
-            MED_error += MED_pt
+            # MED_error += MED_pt
+            # MED_list.append(MED_pt)
 
             #combine height and radian to y_pred
             y_pred = torch.stack((height_pred, x_pred, y_pred), dim=1)
@@ -277,10 +308,19 @@ def predict_and_eval(cfg, model, val_loader, device):
     height_error = (height_error) / len(val_loader)
     xy_error = (xy_error) / len(val_loader)
     degree_error = (degree_error) / len(val_loader)
-    MED_error = (MED_error) / len(val_loader)
 
 
-    print(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}, Mean Eud Dist Error: {MED_error}")
+    #convert list to numpy array for MED list
+    MED_list = np.array(MED_list)
+    all_distances = np.array(all_distances)
+
+
+    #compute mean and std of MED
+    MED_mean = np.mean(all_distances)
+    MED_std = np.std(all_distances)
+
+
+    print(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}, Mean MED: {MED_mean}, STD MED: {MED_std}")
 
     #save y_pred and y_val npy files
     # np.save('y_pred.npy', y_pred_list)
@@ -294,7 +334,7 @@ def predict_and_eval(cfg, model, val_loader, device):
     # eval_utils.plot_regression(cfg,y_pred_list, y_val_list)
 
 
-    return height_error, xy_error, degree_error, MED_error
+    return height_error, xy_error, degree_error, MED_mean, MED_std
 
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D_UMC')
@@ -303,11 +343,15 @@ def main(cfg: DictConfig):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(f"device: {device}")
 
-
+    #TODO: update architecture
     #load model.pth from checkpoint
-    model = CNNRegressor2D(cfg)
+    # model = CNNRegressor2D(cfg)
     # model = ResNet50_audio(cfg)
     # model = AST(cfg)
+    # model = AST_multimodal(cfg)
+    # model = MultiModalTransformer(cfg)
+    # model = MultiModalTransformer_xt_xdot_t(cfg)
+    model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
     # model = ResNet50_audio_proprioceptive(cfg)
     # model = ResNet50_audio_proprioceptive_dropout(cfg)
 
@@ -358,7 +402,7 @@ def main(cfg: DictConfig):
 
     data_dir_debug = ['/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v2_mini/']
 
-    data_dir_list = data_dir_list1 #choose the data_dir_list to use
+    data_dir_list = data_dir_list3 #choose the data_dir_list to use
 
     num_eval_dirs = len(data_dir_list)
 
@@ -367,7 +411,8 @@ def main(cfg: DictConfig):
     height_error_list = []
     xy_error_list = []
     degree_error_list = []
-    MED_error_list = []
+    MED_mean_list = []
+    MED_std_list = []
 
     #predict and evaluate
     for eval_dir in data_dir_list:
@@ -376,22 +421,24 @@ def main(cfg: DictConfig):
         train_loader, val_loader = load_data_eval(cfg, data_dir = eval_dir)
 
         #predict and evaluate
-        height_error, xy_error, degree_error, MED_error = predict_and_eval(cfg, model, val_loader, device)
+        height_error, xy_error, degree_error, MED_mean, MED_std = predict_and_eval(cfg, model, val_loader, device)
 
         #append to list
         height_error_list.append(height_error)
         xy_error_list.append(xy_error)
         degree_error_list.append(degree_error)
-        MED_error_list.append(MED_error)
+        MED_mean_list.append(MED_mean)
+        MED_std_list.append(MED_std)
 
     
     #average the errors
     height_error_avg = sum(height_error_list) / num_eval_dirs
     xy_error_avg = sum(xy_error_list) / num_eval_dirs
     degree_error_avg = sum(degree_error_list) / num_eval_dirs
-    MED_error_avg = sum(MED_error_list) / num_eval_dirs
+    MED_error_avg = sum(MED_mean_list) / num_eval_dirs
+    MED_std_avg = sum(MED_std_list) / num_eval_dirs
 
-    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}, MED_error_avg: {MED_error_avg}")
+    print(f"Average Height Error: {height_error_avg}, Average xy Error: {xy_error_avg}, Average Degree Error: {degree_error_avg}, MED_error_avg: {MED_error_avg}, MED_std_avg: {MED_std_avg}")
     
 
 

@@ -7,6 +7,18 @@ import pandas as pd
 import sys
 
 from scipy.spatial import cKDTree
+from geometry_msgs.msg import Point
+
+def convert_h_rad_to_xyz(height, radian, radius):
+    """
+    Convert height and radian to x, y, z coordinates.
+    Return Point() object.
+    """
+    x = radius * np.cos(radian)
+    y = radius * np.sin(radian)
+    z = height
+
+    return Point(x, y, z)
 
 
 def compute_MAE_contact_point(source, target):
@@ -20,6 +32,15 @@ def compute_MAE_contact_point(source, target):
 
     # Compute the mean absolute error (MAE) between the contact points
     mae = np.mean(np.abs(source_points - target_points))
+
+    diff = source_points - target_points
+    print(f"diff: {diff}")
+
+    abs_diff = np.abs(diff)
+    print(f"abs_diff: {abs_diff}")
+
+    mean_abs_diff = np.mean(abs_diff, axis=0)
+    print(f"mean_abs_diff: {mean_abs_diff}")
 
     return mae
 
@@ -35,10 +56,11 @@ def compute_euclidean_distance(source, target):
     # Compute the Euclidean distance between the contact points
     distances = np.linalg.norm(source_points - target_points, axis=1)
 
-    # average distance
-    distances = np.mean(distances)
+    # Compute mean and standard deviation
+    mean_distance = np.mean(distances)
+    std_distance = np.std(distances)
 
-    return distances
+    return mean_distance, std_distance
 
 def compute_MSE_contact_point(source, target):
     """

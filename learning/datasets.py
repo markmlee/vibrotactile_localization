@@ -9,15 +9,16 @@ from collections import defaultdict
 import torch.nn.functional as F
 import torchaudio.transforms as T
 
-from transforms import to_mel_spectrogram, get_signal
+from transforms import to_mel_spectrogram, get_signal, to_magnitude_phase
 
 import sys
 import numpy as np
+from itertools import combinations
+
 
 import matplotlib.pyplot as plt
 import librosa.display
 import librosa
-
 
 #import function from another directory for plotting
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts')))
@@ -33,7 +34,8 @@ np.random.seed(42)
 
 TRANSFORMS = {
     'wav' : get_signal,
-    'mel': to_mel_spectrogram
+    'mel': to_mel_spectrogram,
+    'stft': to_magnitude_phase
 }
 
 
@@ -81,6 +83,10 @@ class AudioDataset(Dataset):
         self.Y_label_data = []
         self.wav_data_list = []
         self.qt_data_list = []
+        self.xt_data_list = []
+        self.xdot_t_data_list = []
+        self.tdoa_data_list = []
+        self.gcc_data_list = []
 
         #load background noise
         print(f" --------- loading background noise ---------")
@@ -90,7 +96,7 @@ class AudioDataset(Dataset):
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
             print(f"loading trial: {trial_n}")
-            x_data, y_label, wav_data, qt_data = self.load_xy_single_trial(self.cfg, trial_n)
+            x_data, y_label, wav_data, qt_data, xt_data, xdot_t_data,  tdoa_data, gcc_data = self.load_xy_single_trial(self.cfg, trial_n)
 
             # print(f"size of x_data: {x_data.size()}")
 
@@ -98,6 +104,10 @@ class AudioDataset(Dataset):
             self.Y_label_data.append(y_label)
             self.wav_data_list.append(wav_data)
             self.qt_data_list.append(qt_data)
+            self.xt_data_list.append(xt_data)
+            self.xdot_t_data_list.append(xdot_t_data)
+            self.tdoa_data_list.append(tdoa_data)
+            self.gcc_data_list.append(gcc_data)
 
         print(f"size of X_mic_data: {len(self.X_mic_data)}") #--> 100 trials
         self.X_mic_data = torch.stack(self.X_mic_data)  # Shape: [len_data, num_mics, num_mels, num_bins_time]
@@ -149,6 +159,8 @@ class AudioDataset(Dataset):
         wavs = []
         melspecs = []
         qt = None
+        xt = None
+        xdot_t = None
 
         for i in range(len(cfg.device_list)):
             wav_filename = f"{self.dir[trial_n]}/mic{self.cfg.device_list[i]}.wav"
@@ -169,9 +181,21 @@ class AudioDataset(Dataset):
             qt_filename = f"{self.dir[trial_n]}/q_t.npy"
             qt = np.load(qt_filename)
 
+            xt_filename = f"{self.dir[trial_n]}/x_t.npy"
+            xdot_t_filename = f"{self.dir[trial_n]}/xdot_t.npy"
+
+            xt = np.load(xt_filename)
+            xdot_t = np.load(xdot_t_filename)
+
+
         # print(f"size of qt: {qt.shape}") #--> size of qt: (200, 6)
         # extract only the first 100 samples (1 sec) of the joint trajectory
-        qt = qt[:100]
+        qt = qt[:50]
+        xt = xt[:50]
+        xdot_t = xdot_t[:50]
+
+        # print(f" dimensions of qt: {qt.shape}, xt: {xt.shape}, xdot_t: {xdot_t.shape}")
+        # sys.exit()
 
 
         # print(f"len of wavs {len(wavs)}") # --> 1 
@@ -236,6 +260,20 @@ class AudioDataset(Dataset):
         mel_tensor = torch.stack(melspecs, dim=0)
         # print(f"size of mel_tensor: {mel_tensor.size()}") #--> size of data: torch.Size([6, 16, 690])
 
+        # get GCC-PHAT from the time domain wav_tensor (6, 88200)
+        max_delay_between_microphones=0.01 # 10 ms based on empirical data
+        gcc_matrix, tau, pairs  = mic_utils.compute_gcc_phat_matrix(wav_tensor, self.sample_rate, max_delay_between_microphones)
+
+        # print(f"dimensions of gcc_matrix: {gcc_matrix.shape}, tau: {tau.shape}, pairs: {pairs}")
+        # sys.exit()
+
+        tdoa, tdoa_idx = mic_utils.get_time_differences(gcc_matrix, tau)
+        
+        # Plot gcc phat, tdoa
+        # mic_utils.plot_gcc_phat_results(gcc_matrix, tau, pairs)
+
+
+
         if self.cfg.transform == 'mel':
             data = mel_tensor
 
@@ -294,7 +332,7 @@ class AudioDataset(Dataset):
         # #convert to tensor
         # label = torch.tensor(label, dtype=torch.float32)
 
-        return data, label, wav_tensor, qt
+        return data, label, wav_tensor, qt, xt, xdot_t, tdoa, gcc_matrix
     
     def __len__(self):
         return len(self.dir)
@@ -303,6 +341,12 @@ class AudioDataset(Dataset):
         x,y = self.X_mic_data[idx], self.Y_label_data[idx] # --> x: full 2 sec wav/spectrogram
         wav = self.wav_data_list[idx]
         qt = self.qt_data_list[idx]
+        xt = self.xt_data_list[idx]
+        xdot_t = self.xdot_t_data_list[idx]
+
+        tdoa = self.tdoa_data_list[idx]
+        gcc = self.gcc_data_list[idx]
+
         # print(f"index of x: {idx}, y: {y}")
 
         # print(f"shape of x: {x.size()}") #--> shape of x: torch.Size([6, 16, 690]
@@ -352,9 +396,88 @@ class AudioDataset(Dataset):
 
         
         # print(f"size of x after augmentation: {x.size()}") #--> size of x after augmentation: torch.Size([6, 16, 276])
-        return x,y, wav, qt
+        return x,y, wav, qt, xt, xdot_t, tdoa, gcc
 
 
+
+
+def plot_tdoa(dataset):
+    """
+    input: dataset
+    output: plot of tdoa values over trials
+
+    There are 150 trials in the dataset
+    5 trials per line.
+    10 lines per locations.
+    3 different locations.
+    
+    tdoa input dim is 15 for each trial, because of all possible combinations of 6 microphones.
+    Append sequences of 5 trials to complete a line.
+    There should be 15 subplots in total for all combination pairs. Each subplot has 5 tdoa values.
+    Show this subplot 10 times.
+
+    Only perform this for the first 50 trials.
+    """
+    # Generate all microphone pairs
+    pairs = list(combinations(range(6), 2))  # 15 pairs
+
+    # Initialize tdoa list
+    tdoa_list = []
+
+    # Collect first 50 trials
+    for i, (x, y, _, qt, xt, xdot_t, tdoa) in enumerate(dataset):
+        if i >= 50:  # Only process first 50 trials
+            break
+        tdoa_list.append(tdoa)
+
+    # Convert to tensor for easier manipulation
+    tdoa_tensor = torch.stack(tdoa_list)  # [50, 15]
+
+    print(f"dimensions of tdoa_tensor: {tdoa_tensor.shape}")
+
+    time_delay_max = 3 #millisecond
+
+    # Plot 10 sets of 5 trials each
+    for block in range(10):  # 10 blocks
+        start_idx = block * 5
+        end_idx = start_idx + 5
+        
+        # Create figure with 15 subplots (3x5 grid)
+        fig, axes = plt.subplots(5, 3, figsize=(15, 25))
+        fig.suptitle(f'TDOA Values - Trials {start_idx} to {end_idx-1}', fontsize=16)
+        
+        # Plot each mic pair
+        for pair_idx, ((mic1, mic2), ax) in enumerate(zip(pairs, axes.flatten())):
+            # Get TDOA values for this pair across 5 trials
+            tdoa_values = tdoa_tensor[start_idx:end_idx, pair_idx]
+            
+            # Create plot
+            trial_nums = range(start_idx, end_idx)
+            ax.plot(trial_nums, tdoa_values , 'bo-')  # shown in  milliseconds
+            ax.set_title(f'Mic {mic1+1}-{mic2+1}')
+            ax.set_xlabel('Trial Number')
+            ax.set_ylabel('TDOA (ms)')
+            ax.grid(True)
+            
+            # Set reasonable y-axis limits
+            max_val = tdoa_values.max() 
+            min_val = tdoa_values.min() 
+            padding = 0.1 * (max_val - min_val)
+            if padding == 0:  # Handle case where all values are the same
+                padding = 0.1 * abs(max_val)
+            ax.set_ylim([min_val - padding, max_val + padding])
+            
+            # Set x-axis limits
+            ax.set_xlim([start_idx - 0.5, end_idx - 0.5])
+
+            # set y-axis limits
+            ax.set_ylim([-time_delay_max, time_delay_max])
+            
+            # Add trial points
+            ax.scatter(trial_nums, tdoa_values , color='blue')
+
+        plt.tight_layout()
+        plt.show()
 
 def load_data(cfg, train_or_val = 'val'):
     """
@@ -362,6 +485,9 @@ def load_data(cfg, train_or_val = 'val'):
     """
     
     dataset = AudioDataset(cfg=cfg, data_dir = cfg.data_dir, transform = cfg.transform, augment = cfg.augment_data)
+
+    # plot_tdoa(dataset)
+    # sys.exit()
 
   
     #visuaize dataset
