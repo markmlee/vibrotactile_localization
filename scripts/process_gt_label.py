@@ -5,16 +5,24 @@ import time
 import matplotlib.pyplot as plt
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_2D_localization_full_UMC_ranged'
 # dataset_directory = '/home/mark/audio_learning_project/data/franka_UMC_fixed'
-dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_15_Left'
-# dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
+# dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/wood_T32_L42_Vertical_v3_2'
+dataset_directory_GT_modify = '/home/mark/audio_learning_project/data/test_mapping/cross_easy_full_new_v4'
 
 #original without suction
 # dataset_directory1a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal' #DONT USE BC NOISY
-dataset_directory1a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_cleaned'
-dataset_directory1b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
-dataset_directory1c = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
-dataset_directory1d = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
-dataset_directory1e = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
+# dataset_directory1a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_cleaned'
+# dataset_directory1b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal'
+# dataset_directory1c = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
+# dataset_directory1d = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal'
+# dataset_directory1e = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal'
+
+#original without suction, reduced sample
+dataset_directory1a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_cleaned_mini'
+dataset_directory1b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_mini'
+dataset_directory1c = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_mini'
+dataset_directory1d = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_mini'
+dataset_directory1e = '/home/mark/audio_learning_project/data/wood_T22_L80_Horizontal_mini'
+
 
 #with suction
 dataset_directory2a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_v2'
@@ -33,6 +41,44 @@ dataset_directory4b = '/home/mark/audio_learning_project/data/wood_T22_L42_Verti
 dataset_directory4c = '/home/mark/audio_learning_project/data/wood_T32_L42_Vertical'
 dataset_directory4d = '/home/mark/audio_learning_project/data/wood_T25_L42_Vertical'
 
+# v3 redoing datacollection with new setting 10/17/2024
+dataset_directory5a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_v3'
+dataset_directory5b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_v3'
+dataset_directory5c = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_v3'
+dataset_directory5d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v3'
+
+# v3 redoing datacollection with new setting 10/17/2024, vertical hits
+dataset_directory6a = '/home/mark/audio_learning_project/data/wood_T12_L42_Vertical_v3'
+dataset_directory6b = '/home/mark/audio_learning_project/data/wood_T22_L42_Vertical_v3'
+dataset_directory6c = '/home/mark/audio_learning_project/data/wood_T32_L42_Vertical_v3'
+dataset_directory6d = '/home/mark/audio_learning_project/data/wood_T25_L42_Vertical_v3'
+
+# v3 redoing datacollection with new setting 10/17/2024, opposite hits
+dataset_directory7a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite_v3'
+dataset_directory7b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite_v3'
+dataset_directory7c = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_opposite_v3'
+dataset_directory7d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_opposite_v3'
+
+# v3_2 redoing datacollection with new setting 10/27/2024
+dataset_directory8a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_v3_2'
+dataset_directory8b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_v3_2'
+dataset_directory8c = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_v3_2'
+dataset_directory8d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v3_2'
+
+# v3_2 redoing datacollection with new setting 10/27/2024, vertical hits
+dataset_directory9a = '/home/mark/audio_learning_project/data/wood_T12_L42_Vertical_v3_2'
+dataset_directory9b = '/home/mark/audio_learning_project/data/wood_T22_L42_Vertical_v3_2'
+dataset_directory9c = '/home/mark/audio_learning_project/data/wood_T32_L42_Vertical_v3_2'
+dataset_directory9d = '/home/mark/audio_learning_project/data/wood_T25_L42_Vertical_v3_2'
+
+# v3_2 redoing datacollection with new setting 10/27/2024, opposite hits
+dataset_directory10a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite_v3_2'
+dataset_directory10b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite_v3_2'
+dataset_directory10c = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_opposite_v3_2'
+dataset_directory10d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_opposite_v3_2'
+
+
+
 
 # dataset_directory5 = '/home/mark/audio_learning_project/data/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combinedv2'
 
@@ -40,7 +86,7 @@ dataset_directory4d = '/home/mark/audio_learning_project/data/wood_T25_L42_Verti
 # dataset_directory7 = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite'
 
 
-dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_suctionOnly_horizontal_opposite_verticalv2'
+dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_horizontal_opposite_verticalv3_2'
 # dataset_directory_combined = '/home/mark/audio_learning_project/data/wood_T12_T22_T32_L42_T22_L80_Horizontal_combined'
 # dataset_directory_new = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal'
 
@@ -335,9 +381,9 @@ def main():
     # sys.exit()
 
     # ----------------------------- ONLY RUN ONCE WHEN MODIFYING GT_LABEL TO OFFSET -----------------------------
-    # modify_gt_label_height_only(dataset_directory)
     modify_gt_label_height_radian_from_input_label(dataset_directory_GT_modify) #USE THIS FUNCTION
 
+    # modify_gt_label_height_only(dataset_directory)
     # modify_gt_label_radian_only(dataset_directory_GT_modify)
     # --------------------------------------------------------------------------------------------------------------------
 
@@ -357,11 +403,22 @@ def main():
     #iterate through all dataset directories and then combine into a single one
     # combine_dataset_directory_list = [dataset_directory_combined, dataset_directory_new]
     # combine_dataset_directory_list = [dataset_directory1, dataset_directory2, dataset_directory3, dataset_directory4, dataset_directory5, dataset_directory6, dataset_directory7]
+    # combine_dataset_directory_list = [
+    #     dataset_directory1a, dataset_directory1b, dataset_directory1c, dataset_directory1d, dataset_directory1e, 
+    #     dataset_directory2a, dataset_directory2b, dataset_directory2c, dataset_directory2d, 
+    #     dataset_directory3a, dataset_directory3b,
+    #     dataset_directory4a, dataset_directory4b, dataset_directory4c, dataset_directory4d,
+    #     dataset_directory5a, dataset_directory5b, dataset_directory5c, dataset_directory5d,
+    #     dataset_directory6a, dataset_directory6b, dataset_directory6c, dataset_directory6d,
+    #     dataset_directory7a, dataset_directory7b, dataset_directory7c, dataset_directory7d]
+    
     combine_dataset_directory_list = [
-        dataset_directory1a, dataset_directory1b, dataset_directory1c, dataset_directory1d, dataset_directory1e, 
-        dataset_directory2a, dataset_directory2b, dataset_directory2c, dataset_directory2d, 
-        dataset_directory3a, dataset_directory3b,
-        dataset_directory4a, dataset_directory4b, dataset_directory4c, dataset_directory4d]
+        dataset_directory5a, dataset_directory5b, dataset_directory5c, dataset_directory5d,
+        dataset_directory6a, dataset_directory6b, dataset_directory6c, dataset_directory6d,
+        dataset_directory7a, dataset_directory7b, dataset_directory7c, dataset_directory7d,
+        dataset_directory8a, dataset_directory8b, dataset_directory8c, dataset_directory8d,
+        dataset_directory9a, dataset_directory9b, dataset_directory9c, dataset_directory9d,
+        dataset_directory10a, dataset_directory10b, dataset_directory10c, dataset_directory10d]
     
     
     # combine_dataset_directory_list = [

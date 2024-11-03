@@ -1,10 +1,10 @@
 # ----- wandb log parameters -----
 log_wandb: True
-wandb_run_name: "v2data_Multi_ResNet50_MLP_selfattn_xt_xdot_gcc"
+wandb_run_name: "v3data_Multi_ResNet50_MLP_selfattn_xt_xdot_gcc"
 wandb_project: "audio_localization8"
 
 
-data_dir: /home/mark/audio_learning_project/data/wood_suctionOnly_horizontal_opposite_verticalv2/ #wood_horizontal_opposite_verticalv3/ #/ #wood_T12_T22_T32_L42_T22_L80_Horizontal_combined_suction_opposite/ #wood_suctionOnly_horizontal_opposite_verticalv2/
+data_dir: /home/mark/audio_learning_project/data/wood_horizontal_opposite_verticalv3_2/ #wood_horizontal_opposite_verticalv3_2/ #wood_suctionOnly_horizontal_opposite_verticalv2/ #wood_horizontal_opposite_verticalv3/ #/ #wood_T12_T22_T32_L42_T22_L80_Horizontal_combined_suction_opposite/ #wood_suctionOnly_horizontal_opposite_verticalv2/
 background_dir: /home/mark/audio_learning_project/data/franka_constant/no_contact/trial0/
 transform: mel
 
@@ -40,8 +40,8 @@ augment_freqmask: True #upon getitem in dataloader
 model_path: /home/mark/audio_learning_project/models
 checkpoint_dir: ??? #to be filled in by hydra
 
-batch_size: 128
-val_batch_size: 128
+batch_size: 64
+val_batch_size: 64
 learning_rate: 0.005
 
 
@@ -51,7 +51,7 @@ output_representation_normalize: False #for ablation study, to normalize the out
 
 
 # ----- training hypertuning parameters -----
-train_epochs: 200 #100 for proprioception, 200 for audio only
+train_epochs: 100 #100 for proprioception, 200 for audio only
 log_frequency: 1
 eval_frequency: 1
 

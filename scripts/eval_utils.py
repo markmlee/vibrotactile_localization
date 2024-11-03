@@ -34,13 +34,13 @@ def compute_MAE_contact_point(source, target):
     mae = np.mean(np.abs(source_points - target_points))
 
     diff = source_points - target_points
-    print(f"diff: {diff}")
+    # print(f"diff: {diff}")
 
     abs_diff = np.abs(diff)
-    print(f"abs_diff: {abs_diff}")
+    # print(f"abs_diff: {abs_diff}")
 
     mean_abs_diff = np.mean(abs_diff, axis=0)
-    print(f"mean_abs_diff: {mean_abs_diff}")
+    # print(f"mean_abs_diff: {mean_abs_diff}")
 
     return mae
 

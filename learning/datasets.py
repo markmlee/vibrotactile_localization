@@ -14,7 +14,7 @@ from transforms import to_mel_spectrogram, get_signal, to_magnitude_phase
 import sys
 import numpy as np
 from itertools import combinations
-
+import gc
 
 import matplotlib.pyplot as plt
 import librosa.display
@@ -61,7 +61,9 @@ class AudioDataset(Dataset):
         len_data = len(dir_raw)
 
         count = 0
+        phase_dir = f"{data_dir}phase"
         data_dir = f"{data_dir}trial"
+        
         self.dir = []
 
         print(f"data_dir: {data_dir}, len(self.dir): {len(self.dir)}, len_data: {len_data}")
@@ -92,11 +94,33 @@ class AudioDataset(Dataset):
         print(f" --------- loading background noise ---------")
         self.background_wavs = mic_utils.load_background_noise_multiChannel(cfg)
         
+        # Create a directory for temporary files if it doesn't exist
+        self.temp_dir = os.path.join(phase_dir, 'temp_phase_data')
+        if not os.path.exists(self.temp_dir):
+            os.makedirs(self.temp_dir)
 
+        #create an efficient memory for phase data b/c results in out of memory error for RAM
+        # Create a memory-mapped array for phase data
+        # First, load one trial to get dimensions
+        # print(f" --------- determining phase dimensions ---------")
+        _, _, _, _, _, _, _, _, sample_phase = self.load_xy_single_trial(cfg, 0)
+        # phase_shape = sample_phase.shape
+        
+        # # Create memory-mapped file for phases
+        # print(f" --------- creating memory-mapped phase array ---------")
+        # phase_memmap_path = os.path.join(self.temp_dir, 'phase_memmap.npy')
+        # self.phase_stft_data = np.memmap(
+        #     phase_memmap_path,
+        #     dtype='float32',
+        #     mode='w+',
+        #     shape=(len(self.dir), *phase_shape)
+        # )
+
+        
         print(f" --------- loading data ---------")
         for trial_n in range(len_data):
             print(f"loading trial: {trial_n}")
-            x_data, y_label, wav_data, qt_data, xt_data, xdot_t_data,  tdoa_data, gcc_data = self.load_xy_single_trial(self.cfg, trial_n)
+            x_data, y_label, wav_data, qt_data, xt_data, xdot_t_data,  tdoa_data, gcc_data, phase_data = self.load_xy_single_trial(self.cfg, trial_n)
 
             # print(f"size of x_data: {x_data.size()}")
 
@@ -108,6 +132,14 @@ class AudioDataset(Dataset):
             self.xdot_t_data_list.append(xdot_t_data)
             self.tdoa_data_list.append(tdoa_data)
             self.gcc_data_list.append(gcc_data)
+
+            #  # Store phase data in memmap array
+            # self.phase_stft_data[trial_n] = phase_data.cpu().numpy()
+            
+            # # Clear memory after each trial
+            # del phase_data
+            # torch.cuda.empty_cache()
+            # gc.collect()
 
         print(f"size of X_mic_data: {len(self.X_mic_data)}") #--> 100 trials
         self.X_mic_data = torch.stack(self.X_mic_data)  # Shape: [len_data, num_mics, num_mels, num_bins_time]
@@ -161,6 +193,9 @@ class AudioDataset(Dataset):
         qt = None
         xt = None
         xdot_t = None
+
+        phase_stft = [] #ablation study, stacked phase from stft output
+        phase_stft_tensor = None
 
         for i in range(len(cfg.device_list)):
             wav_filename = f"{self.dir[trial_n]}/mic{self.cfg.device_list[i]}.wav"
@@ -233,6 +268,23 @@ class AudioDataset(Dataset):
                 # print(f"trial number: {trial_n} output shape of mel transform: {mel.size()}") #--> output shape of transform: torch.Size([16, 690])
                 melspecs.append(mel.squeeze(0)) # remove the dimension of size 1
 
+            #apply stft transform to wav file
+            #TODO:uncomment or comment out this section for ablation study
+            # stft_result = torch.stft(
+            #     trimmed_wavs[i], 
+            #     n_fft=cfg.n_fft, 
+            #     hop_length=cfg.hop_length, 
+            #     win_length=cfg.n_fft, 
+            #     window=torch.hann_window(cfg.n_fft).to(trimmed_wavs[i].device), 
+            #     center=False,
+            #     return_complex=True  
+            # )
+            # phase = torch.angle(stft_result)
+            #print dimensions
+            # print(f"dimension of wav: {trimmed_wavs[i].size()}, dimension of stft: {stft_result.size()} ,dimension of phase: {phase.size()}")
+            #append
+            # phase_stft.append(phase)
+
 
         if cfg.visualize_subtract_background:
             # mic_utils.plot_fft(self.background_wavs, cfg.sample_rate, [1,2,3,4,5,6])
@@ -260,6 +312,10 @@ class AudioDataset(Dataset):
         mel_tensor = torch.stack(melspecs, dim=0)
         # print(f"size of mel_tensor: {mel_tensor.size()}") #--> size of data: torch.Size([6, 16, 690])
 
+        #stack phase stft into a tensor of shape (num_mics, num_bins, num_samples)
+        # phase_stft_tensor = torch.stack(phase_stft, dim=0)
+
+
         # get GCC-PHAT from the time domain wav_tensor (6, 88200)
         max_delay_between_microphones=0.01 # 10 ms based on empirical data
         gcc_matrix, tau, pairs  = mic_utils.compute_gcc_phat_matrix(wav_tensor, self.sample_rate, max_delay_between_microphones)
@@ -271,6 +327,7 @@ class AudioDataset(Dataset):
         
         # Plot gcc phat, tdoa
         # mic_utils.plot_gcc_phat_results(gcc_matrix, tau, pairs)
+        # sys.exit()
 
 
 
@@ -332,7 +389,7 @@ class AudioDataset(Dataset):
         # #convert to tensor
         # label = torch.tensor(label, dtype=torch.float32)
 
-        return data, label, wav_tensor, qt, xt, xdot_t, tdoa, gcc_matrix
+        return data, label, wav_tensor, qt, xt, xdot_t, tdoa, gcc_matrix, phase_stft_tensor
     
     def __len__(self):
         return len(self.dir)
@@ -346,6 +403,10 @@ class AudioDataset(Dataset):
 
         tdoa = self.tdoa_data_list[idx]
         gcc = self.gcc_data_list[idx]
+
+        # Load phase data from memmap
+        # phase = torch.from_numpy(self.phase_stft_data[idx].copy())
+        phase = None
 
         # print(f"index of x: {idx}, y: {y}")
 
@@ -369,21 +430,28 @@ class AudioDataset(Dataset):
                 # print(f"start: {start}, end: {end}, size of x: {x.size()}")
             x = x[:, :, start:end] #--> [num_mics, num_mels, 276] 
 
+            #TODO: ablation study, remove phase from stft
+            # phase = phase[:, :, start:end] #--> [num_mics, num_bins, 276]
+
             if self.cfg.affine_transform:
                 #apply affine transformation
                 affine_transform = RandomAffine(degrees=0, translate=(0.1, 0.))
                 x = affine_transform(x)
+                # phase = affine_transform(phase)
+
 
 
             #apply augmentation
             if self.cfg.augment_timemask:
                 time_masking = T.TimeMasking(time_mask_param=40)
                 x = time_masking(x)
+                # phase = time_masking(phase)
 
             if self.cfg.augment_freqmask:
 
                 freq_masking = T.FrequencyMasking(freq_mask_param=5)
                 x = freq_masking(x)
+                # phase = freq_masking(phase)
 
         else: #no augmentation
             #input size of 690. 
@@ -393,6 +461,7 @@ class AudioDataset(Dataset):
             end = start + desired_bin_length
 
             x = x[:, :, start:end]
+            # phase = phase[:, :, start:end]
 
         
         # print(f"size of x after augmentation: {x.size()}") #--> size of x after augmentation: torch.Size([6, 16, 276])

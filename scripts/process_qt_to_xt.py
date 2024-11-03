@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from urdfpy import URDF
 from scipy.spatial.transform import Rotation as R
-
+import sys
 
 def load_robot():
     """
@@ -298,95 +298,98 @@ def plot_angular_velocity(xdot_list):
     plt.suptitle('End-Effector Angular Velocity by Trial', fontsize=16)
     return fig
 
-def main():
-    print(f"**** start script **** ")
-    
-    # Load data
-    # data_dir = '/home/mark/audio_learning_project/data/wood_suctionOnly_horizontal_opposite_verticalv2/'
-    data_dir = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v2_mini/'
-    
+def process_single_directory(data_dir, robot, joint_names):
+    """
+    Process all trials in a single directory
+    """
     # Get all directory paths to trials
     dir_raw = sorted([os.path.join(data_dir, f) for f in os.listdir(data_dir)])
     dir_raw = [d for d in dir_raw if d.split('/')[-1].startswith('trial')]
     len_data = len(dir_raw)
     
     count = 0
-    data_dir = f"{data_dir}trial"
+    data_dir_base = f"{data_dir}trial"
     dir = []
     
-    print(f"data_dir: {data_dir}, len(dir): {len(dir)}, len_data: {len_data}")
+    print(f"Processing directory: {data_dir}")
+    print(f"Found {len_data} trials")
+    
     while len(dir) < len_data:
-        file_name = f"{data_dir}{count}"
+        file_name = f"{data_dir_base}{count}"
+        # print(f"file_name: {file_name}")
         if file_name in dir_raw:
             dir.append(file_name)
         count += 1
-    
-     # Load robot once before processing trials
-    robot, joint_names = load_robot()
-    print("Robot model loaded successfully")
+        # print(f"count: {count}, len(dir): {len(dir)}")
 
-    # Load data from each trial
-    qt_list = []
-    xt_list = []
-    xdot_t_list = []
-    xt_measured_list = []
-    xdot_t_measured_list = []
     
-    print(f" --------- loading data ---------")
+    # Load data from each trial
     for trial_n in range(len_data):
         qt_for_trial = np.load(os.path.join(dir[trial_n], "q_t.npy"))
-        qt_list.append(qt_for_trial)
         xt_measured_for_trial = np.load(os.path.join(dir[trial_n], "x_t.npy")) #only contains xyz
-        xt_measured_list.append(xt_measured_for_trial)
         xdot_t_measured_for_trial = np.load(os.path.join(dir[trial_n], "xdot_t.npy")) #only contains xyz
-        xdot_t_measured_list.append(xdot_t_measured_for_trial)
-
-        
 
         # Convert qt to xt
         xt_for_trial, _ = convert_qt_to_xt(qt_for_trial, robot, joint_names)
-        xt_list.append(xt_for_trial)
-        # xdot_t_list.append(xdot_t_for_trial)
-
 
         # Create new array with measured positions and computed orientations
         xt_combined = np.zeros((len(xt_measured_for_trial), 7))
         xt_combined[:, :3] = xt_measured_for_trial[:,:3]  # Copy measured positions
         xt_combined[:, 3:] = xt_for_trial[:, 3:]   # Copy computed orientations
 
-        
-        # xdot_t_combined = np.zeros((len(xdot_t_measured_for_trial), 6))
-        # xdot_t_combined[:, :3] = xdot_t_measured_for_trial[:,:3]
-        # xdot_t_combined[:, 3:] = xdot_t_for_trial[:, 3:]
-
-
         # Save the combined data back to x_t.npy
         save_path = os.path.join(dir[trial_n], "x_t.npy")
         np.save(save_path, xt_combined)
-        # print(f"Saved combined trajectory for trial {trial_n} to {save_path}")
 
         #print every 100 trials
         if trial_n % 100 == 0:
-            print(f"Processed {trial_n} trials")
-    
-    # # # Plot trajectories
-    # fig = plot_compare_xt_trajectories(xt_list, xt_measured_list)
-    # plt.show()
+            print(f"Processed {trial_n} trials in {data_dir}")
 
-    # # Plot orientation trajectories
-    # fig_orient = plot_orientation(xt_list)
-    # plt.show()
 
-    # # Plot velocity trajectories
-    # # Plot velocity comparison
-    # fig_vel = plot_compare_xdot_trajectories(xdot_t_list, xdot_t_measured_list)
-    # plt.show()
+def main():
+    print(f"**** start script **** ")
     
-    # # Plot angular velocity (optional, since you don't have measured angular velocities)
-    # fig_ang_vel = plot_angular_velocity(xdot_t_list)
-    # plt.show()
+    # Load robot once before processing trials
+    robot, joint_names = load_robot()
+    print("Robot model loaded successfully")
+
+    # Load data directories
+    # v3 redoing datacollection with new setting 10/17/2024
+    dataset_directory5a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_v3/'
+    dataset_directory5b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_v3/'
+    dataset_directory5c = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_v3/'
+    dataset_directory5d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v3/'
+
+    # v3 redoing datacollection with new setting 10/17/2024, vertical hits
+    dataset_directory6a = '/home/mark/audio_learning_project/data/wood_T12_L42_Vertical_v3/'
+    dataset_directory6b = '/home/mark/audio_learning_project/data/wood_T22_L42_Vertical_v3/'
+    dataset_directory6c = '/home/mark/audio_learning_project/data/wood_T32_L42_Vertical_v3/'
+    dataset_directory6d = '/home/mark/audio_learning_project/data/wood_T25_L42_Vertical_v3/'
+
+    # v3 redoing datacollection with new setting 10/17/2024, opposite hits
+    dataset_directory7a = '/home/mark/audio_learning_project/data/wood_T12_L42_Horizontal_opposite_v3/'
+    dataset_directory7b = '/home/mark/audio_learning_project/data/wood_T22_L42_Horizontal_opposite_v3/'
+    dataset_directory7c = '/home/mark/audio_learning_project/data/wood_T32_L42_Horizontal_opposite_v3/'
+    dataset_directory7d = '/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_opposite_v3/'
+
+    # data_dir_list = [
+    #     dataset_directory5a, dataset_directory5b, dataset_directory5c, dataset_directory5d,
+    #     dataset_directory6a, dataset_directory6b, dataset_directory6c, dataset_directory6d,
+    #     dataset_directory7a, dataset_directory7b, dataset_directory7c, dataset_directory7d
+    # ]
+
+    data_dir_list = ['/home/mark/audio_learning_project/data/test_mapping/cross_easy_full_new_v4/']
+
+    # Process each directory in the list
+    for data_dir in data_dir_list:
+        try:
+            process_single_directory(data_dir, robot, joint_names)
+        except Exception as e:
+            print(f"Error processing directory {data_dir}: {str(e)}")
+            continue
     
     print(f"**** end script **** ")
 
+    
 if __name__ == '__main__':
     main()

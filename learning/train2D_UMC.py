@@ -34,7 +34,9 @@ from models.AudioSpectrogramTransformer import AST, AST_multimodal, AST_multimod
 from models.multimodal_transformer import MultiModalTransformer
 from models.multimodal_transformer_xt_xdot import MultiModalTransformer_xt_xdot_t
 from models.multimodal_transformer_xt_xdot_gcc import MultiModalTransformer_xt_xdot_t_gccphat
-
+from models.multimodal_transformer_xt_xdot_gcc_tokens import MultiModalTransformer_xt_xdot_t_gccphat_tokens
+from models.multimodal_transformer_xt_xdot_toda import MultiModalTransformer_xt_xdot_t_toda
+from models.multimodal_transformer_xt_xdot_phase import MultiModalTransformer_xt_xdot_t_phase
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
 
@@ -79,6 +81,8 @@ def model_prediction(cfg, device, model, x, y, qt, xt, xdot_t, tdoa, gcc_matrix,
     # y_pred = model(x_, xt_xdot_t) # --> Audio + proprioceptive input
     # y_pred = model(x_, qt_, tdoa_) # --> Audio + proprioceptive + tdoa input
     y_pred = model(x_, xt_xdot_t, gcc_matrix_) # --> Audio + proprioceptive + gcc input
+    # y_pred = model(x_, xt_xdot_t, tdoa_) # --> Audio + proprioceptive + tdoa input
+    # y_pred = model(x_, xt_xdot_t, phase_) # --> Audio + proprioceptive + tdoa input
 
     if cfg.output_representation == 'height':
         y_pred_height = y_pred
@@ -154,6 +158,9 @@ def train_CNN(cfg,device, wandb, logger):
     # model = MultiModalTransformer(cfg)
     # model = MultiModalTransformer_xt_xdot_t(cfg)
     model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_gccphat_tokens(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_toda(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_phase(cfg)
 
 
     model.to(device)
@@ -279,8 +286,8 @@ def train_CNN(cfg,device, wandb, logger):
 
         #at last epoch, run eval_CNN to plot regression line
         if i == cfg.train_epochs-1:
-            error = evaluate_CNN(cfg,best_model,device,val_loader, logger)
-            logger.log(f"Mean Absolute Error: {error}")
+            height_error, xy_error, degree_error, MED_mean, MED_std, all_distances = eval_utils_plot.predict_and_evaluate_val_dataset(cfg,best_model,device,val_loader)
+            print(f"MED mean: {MED_mean}, MED std: {MED_std}")
 
     
 
@@ -340,161 +347,13 @@ def eval_random_prediction(cfg, device):
     return error
 
 
-def evaluate_CNN(cfg, model, device, val_loader, logger):
+def evaluate_CNN(cfg, model, device, val_loader):
     """
     evaluate without creating a new dataset 
     """
     model.eval()
 
-    height_error = 0
-    xy_error = 0
-    deg_error = 0
-    MAE_error = 0
-    y_val_list = []
-    y_pred_list = []
 
-    pred_label_list = []
-    true_label_list = []
-
-    for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc_matrix) in enumerate(tqdm(val_loader)):
-
-        x_input, Y_val = x.float().to(device), y.float().to(device)
-        qt_val = qt.float().to(device)
-        xt_val = xt.float().to(device)
-        xdot_t_val = xdot_t.float().to(device)
-        tdoa_val = tdoa.float().to(device)
-        gcc_matrix_val = gcc_matrix.float().to(device)
-
-        #TODO: concat xt_val and xdot_t_val
-        xt_xdot_t_val = torch.cat((xt_val, xdot_t_val), dim=2)
-    
-        with torch.no_grad():
-
-            if cfg.output_representation == 'height_radianclass':
-                y_pred_height, y_pred_class = model(x_input)
-
-                y_diff = y_pred_height - y_val[:,0]
-
-                #acuracy of the classification
-                _, y_pred_class = torch.max(y_pred_class, 1)
-                pred_label_list.extend(y_pred_class.cpu().numpy())
-                true_label_list.extend(y_val[:,1].cpu().numpy())
-
-                #show prediction and true label
-                # print(f"y_pred_class: {y_pred_class}, y_val: {y_val[:,1]}")
-                # print(f"h_pred: {y_pred_height}, h_val: {y_val[:,0]}")
-                
-            elif cfg.output_representation == 'height':
-                y_pred = model(x_input)
-
-                #use only first column element of y_pred and y_val
-
-
-                # print(f"y_pred: {y_pred}, y_val: {y_val}")
-                y_diff = y_pred - y_val
-                # print(f"y_diff: {y_diff}")
-
-                #get absolute error
-                height_error += torch.mean(torch.abs(y_diff))
-        
-          
-                #get tensor values and append them to list
-                y_val_list.extend(y_val.cpu().numpy())
-                y_pred_list.extend(y_pred.cpu().numpy())
-
-            else:
-                #TODO: MODIFY HERE TO USE THE RIGHT MODEL
-                # Y_output = model(x_input)
-                # Y_output = model(x_input,  xt_xdot_t_val)
-                # Y_output = model(x_input, qt_val, tdoa_val)
-                Y_output = model(x_input, xt_xdot_t_val, gcc_matrix_val)
-
-                #split prediction to height and radian
-                height_pred = Y_output[:,0]
-
-                #clip height to [-11, +11]
-                height_pred = torch.clamp(height_pred, -11, 11)
-
-                x_pred = Y_output[:,1]
-                y_pred = Y_output[:,2]
-
-                #clip x and y to [-1, +1]
-                x_pred = torch.clamp(x_pred, -1, 1)
-                y_pred = torch.clamp(y_pred, -1, 1)
-
-                #convert y_val to radian
-                x_val = Y_val[:,1]
-                y_val = Y_val[:,2]
-                radian_val = torch.atan2(y_val, x_val)
-
-                #convert y_pred to radian
-                radian_pred = torch.atan2(y_pred, x_pred)
-
-                #resolve wrap around angle issues
-                radian_error = eval_utils_plot.calculate_radian_error(radian_pred, radian_val)
-                degree_diff = torch.rad2deg(radian_error)
-
-                height_diff = height_pred - Y_val[:,0]
-                
-
-                x_diff = x_pred - x_val
-                y_diff = y_pred - y_val
-
-                xy_diff = x_diff + y_diff
-
-                
-
-                #get absolute error
-                height_error += torch.mean(torch.abs(height_diff))
-                xy_error += torch.mean(torch.abs(xy_diff))
-                deg_error += torch.mean(torch.abs(degree_diff))
-
-                # ------------------------------------------
-
-                # convert to xyz point
-                pt_predict = pcloud_eval_utils.convert_h_rad_to_xyz(height_pred.cpu().numpy(), radian_pred.cpu().numpy(), cfg.cylinder_radius)
-                pt_gt = pcloud_eval_utils.convert_h_rad_to_xyz(Y_val[:,0].cpu().numpy(), radian_val.cpu().numpy(), cfg.cylinder_radius)
-
-                # get MAE between 2 pts
-                MAE_pt = pcloud_eval_utils.compute_MAE_contact_point([pt_predict], [pt_gt])
-
-                # ------------------------------------------
-
-                MAE_error += MAE_pt
-
-        
-          
-                #get tensor values and append them to list
-                y_val_list.extend(Y_val.cpu().numpy())
-                y_pred_list.extend(Y_output.cpu().numpy())
-        
-
-    if cfg.output_representation == 'height_radianclass':
-        accuracy = accuracy_score(true_label_list, pred_label_list)
-        logger.log(f"Accuracy: {accuracy}")
-
-    else:    
-        #sum up the rmse and divide by number of batches
-        height_error = height_error / len(val_loader)
-        xy_error = xy_error / len(val_loader)
-        deg_error = deg_error / len(val_loader)
-        MAE_error = MAE_error / len(val_loader)
-
-        logger.log(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {deg_error}, MAE Error: {MAE_error}")
-
-        #stack the list of array to numpy array
-        y_val_list = np.stack(y_val_list)
-        y_pred_list = np.stack(y_pred_list)
-
-        if cfg.visuaize_regression:
-            #plot regression line
-            eval_utils_plot.plot_regression(cfg, y_pred_list, y_val_list)
-
-
-
-    return height_error
-
-        
 
 # ==================================================================================================
 def init_wandb(cfg):

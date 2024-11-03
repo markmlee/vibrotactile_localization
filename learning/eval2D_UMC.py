@@ -35,9 +35,11 @@ from models.AudioSpectrogramTransformer import AST, AST_multimodal
 from models.multimodal_transformer import MultiModalTransformer
 from models.multimodal_transformer_xt_xdot import MultiModalTransformer_xt_xdot_t
 from models.multimodal_transformer_xt_xdot_gcc import MultiModalTransformer_xt_xdot_t_gccphat
+from models.multimodal_transformer_xt_xdot_gcc_tokens import MultiModalTransformer_xt_xdot_t_gccphat_tokens
+from models.multimodal_transformer_xt_xdot_phase import MultiModalTransformer_xt_xdot_t_phase
+from models.multimodal_transformer_xt_xdot_toda import MultiModalTransformer_xt_xdot_t_toda
 
 #eval
-from sklearn.metrics import mean_squared_error
 import eval_utils_plot as eval_utils_plot
 
 #import function from another directory for helper func
@@ -145,196 +147,6 @@ def load_data_eval(cfg, data_dir):
 
 
 
-def predict_and_eval(cfg, model, val_loader, device):
-    """
-    predict and evaluate the model
-    return MAE of height, xy, and degree
-    """
-
-    height_error, xy_error = 0,0
-    degree_error = 0
-    MED_list = []
-    y_val_list = []
-    y_pred_list = []
-
-    all_distances = []  # Store all individual distances
-
-
-    for _, (x, y, _, qt, xt, xdot_t, tdoa, gcc) in enumerate(tqdm(val_loader)):
-
-        #plot spectrogram for all data
-        # mic_utils.plot_spectrogram_of_all_data(cfg, x, 44100) # --> [batch_size, mic, freq, time]
-        # sys.exit()
-
-        #plot spectrogram for visualization
-        # plot_spectrogram(cfg, x[0], 44100)
-        # sys.exit()
-
-        # if cfg.visuaize_dataset:
-            # for i in range(5):
-            #     #convert to list of 1st channel --> [[40, 345] ... [40, 345] ]
-            #     x_input_list = [x[i] for i in range(x.shape[0])]
-            #     print(f"size of x_input_list: {len(x_input_list)}")
-            #     print(f"i: {i} and y: {y}")
-            #     # plot mel spectrogram
-            #     mic_utils.plot_spectrogram_with_cfg(cfg, x_input_list[i], cfg.sample_rate)
-
-        x_input, Y_val = x.float().to(device), y.float().to(device)
-        qt_val = qt.float().to(device)
-        tdoa_val = tdoa.float().to(device)
-        xt_val = xt.float().to(device)
-        xdot_t_val = xdot_t.float().to(device)
-        gcc_val = gcc.float().to(device)
-
-        xt_xdot_t = torch.cat((xt_val, xdot_t_val), dim=2)
-
-        with torch.no_grad():
-            #TODO: MODIFY ACCORDING TO MODEL
-            # Y_output = model(x_input) # --> single input model
-            # Y_output = model(x_input, qt_val)
-            # Y_output = model(x_input, xt_val)
-            # Y_output = model(x_input, xt_xdot_t)
-            # Y_output = model(x_input, qt_val, tdoa_val)
-            Y_output = model(x_input, xt_xdot_t, gcc_val)
-
-            #split prediction to height and radian
-            height_pred = Y_output[:,0]
-
-            #clip height to [-11, +11]
-            height_pred = torch.clamp(height_pred, -11, 11)
-
-            x_pred = Y_output[:,1]
-            y_pred = Y_output[:,2]
-
-            #clip x and y to [-1, +1]
-            x_pred = torch.clamp(x_pred, -1, 1)
-            y_pred = torch.clamp(y_pred, -1, 1)
-
-            # radian_pred = torch.atan2(y_pred, x_pred)
-
-            #convert y_val to radian
-            x_val = Y_val[:,1]
-            y_val = Y_val[:,2]
-            radian_val = torch.atan2(y_val, x_val)
-            if cfg.offset_radian_rightside:
-                #offset the radian to the opposite side of the circle while handling the wrap around issue
-                radian_val = radian_val + math.pi
-                radian_val = torch.remainder(radian_val, 2*math.pi)
-            if cfg.offset_radian_lateralside:
-                #offset the radian for laterial strike (by -90 degrees) while handling the wrap around issue
-                radian_val = radian_val - math.pi/2
-                radian_val = torch.remainder(radian_val, 2*math.pi)
-                
-                
-
-            #convert y_pred to radian
-            radian_pred = torch.atan2(y_pred, x_pred)
-
-            #resolve wrap around angle issues
-            radian_error = eval_utils_plot.calculate_radian_error(radian_pred, radian_val)
-            degree_diff = torch.rad2deg(radian_error)
-
-            
-            #reshape height and radian to be same shape as y_val
-            height_pred = height_pred.view(-1)
-            x_pred = x_pred.view(-1)
-            y_pred = y_pred.view(-1)
-
-            height_diff = height_pred - Y_val[:,0]
-            x_diff = x_pred - Y_val[:,1]
-            y_diff = y_pred - Y_val[:,2]
-
-            
-
-
-            if cfg.offset_radian_lateralside:
-                print(f"height diff before: {height_diff}, length: {len(height_diff)}")
-                #discard every 5th element in the height_diff (keep 0-4, discard 5, keep 6-9, discard 10, etc.)
-                height_diff = [height_diff[i] for i in range(len(height_diff)) if i % 5 != 4]
-                #convert list to tensor
-                height_diff = torch.tensor(height_diff)
-                print(f"height diff after: {height_diff}, length: {len(height_diff)}")
-
-            print(f"height pred: {height_pred}, height GT: {Y_val[:,0]}")
-            print(f"rad pred: {radian_pred}, rad GT: {radian_val}")
-            print(f"x pred: {x_pred}, x GT: {x_val}, y pred: {y_pred}, y GT: {y_val}")
-            print(f"height diff: {height_diff}, degree_diff: {degree_diff}")
-
-        
-
-            #get absolute error
-            height_error += torch.mean(torch.abs(height_diff)) 
-            degree_error  += torch.mean(torch.abs(torch.rad2deg(radian_error) ) )
-            xy_error += torch.mean(torch.abs(x_diff) + torch.abs(y_diff))
-
-            # ------------------------------------------
-
-            # convert to xyz point
-            pt_predict = pcloud_eval_utils.convert_h_rad_to_xyz(height_pred.cpu().numpy(), radian_pred.cpu().numpy(), cfg.cylinder_radius)
-            pt_gt = pcloud_eval_utils.convert_h_rad_to_xyz(Y_val[:,0].cpu().numpy(), radian_val.cpu().numpy(), cfg.cylinder_radius)
-
-            # get distances for all points in batch
-            # distances = np.sqrt(np.sum((pt_predict - pt_gt) ** 2, axis=1))  # Compute for each point in batch
-
-            source, target = [pt_predict], [pt_gt]
-            # Convert lists of points to numpy arrays
-            source_points = np.array([[pt.x, pt.y, pt.z] for pt in source])
-            target_points = np.array([[pt.x, pt.y, pt.z] for pt in target])
-
-            # Compute the Euclidean distance between the contact points
-            distances = np.linalg.norm(source_points - target_points, axis=1)
-
-            all_distances.extend(distances)  # Add all distances from this batch
-
-            # get MAE between 2 pts
-            # MED_pt = pcloud_eval_utils.compute_euclidean_distance([pt_predict], [pt_gt])
-
-            # ------------------------------------------
-
-            # MED_error += MED_pt
-            # MED_list.append(MED_pt)
-
-            #combine height and radian to y_pred
-            y_pred = torch.stack((height_pred, x_pred, y_pred), dim=1)
-            y_val_ = torch.stack((Y_val[:,0], x_val, y_val), dim=1)
-
-        
-        #get tensor values and append them to list
-        y_val_list.extend(y_val_.cpu().numpy())
-        y_pred_list.extend(y_pred.cpu().numpy())
-        
-            
-    #sum up the rmse and divide by number of batches
-    height_error = (height_error) / len(val_loader)
-    xy_error = (xy_error) / len(val_loader)
-    degree_error = (degree_error) / len(val_loader)
-
-
-    #convert list to numpy array for MED list
-    MED_list = np.array(MED_list)
-    all_distances = np.array(all_distances)
-
-
-    #compute mean and std of MED
-    MED_mean = np.mean(all_distances)
-    MED_std = np.std(all_distances)
-
-
-    print(f"Height Error: {height_error}, xy Error: {xy_error}, Degree Error: {degree_error}, Mean MED: {MED_mean}, STD MED: {MED_std}")
-
-    #save y_pred and y_val npy files
-    # np.save('y_pred.npy', y_pred_list)
-    # np.save('y_val.npy', y_val_list)
-    
-    #convert list to numpy array
-    # y_pred_list = np.array(y_pred_list)
-    # y_val_list = np.array(y_val_list)
-
-    #plot regression line
-    # eval_utils.plot_regression(cfg,y_pred_list, y_val_list)
-
-
-    return height_error, xy_error, degree_error, MED_mean, MED_std
 
 
 @hydra.main(version_base='1.3',config_path='configs', config_name = 'eval2D_UMC')
@@ -352,6 +164,9 @@ def main(cfg: DictConfig):
     # model = MultiModalTransformer(cfg)
     # model = MultiModalTransformer_xt_xdot_t(cfg)
     model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_phase(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_toda(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_gccphat_tokens(cfg)
     # model = ResNet50_audio_proprioceptive(cfg)
     # model = ResNet50_audio_proprioceptive_dropout(cfg)
 
@@ -396,13 +211,13 @@ def main(cfg: DictConfig):
                     '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_10_Left/',
                     '/home/mark/audio_learning_project/data/test_generalization/cross_easy_X_15_Left/' ] # val set that contains novel obj data
     
-    data_dir_list4 = ['/home/mark/audio_learning_project/data/test_mapping/cross_easy_uniformexplore_v2/']
+    data_dir_list4 = ['/home/mark/audio_learning_project/data/test_mapping/cross_easy_full_new_v4/']
     data_dir_list5 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T22L42_Y_40_w_suctionv5/']
     data_dir_list6 = ['/home/mark/audio_learning_project/data/test_generalization/stick_T25L42_Y_25_consistent_test_noAmpl_100/']
 
     data_dir_debug = ['/home/mark/audio_learning_project/data/wood_T25_L42_Horizontal_v2_mini/']
 
-    data_dir_list = data_dir_list3 #choose the data_dir_list to use
+    data_dir_list = data_dir_list4 #choose the data_dir_list to use
 
     num_eval_dirs = len(data_dir_list)
 
@@ -421,7 +236,7 @@ def main(cfg: DictConfig):
         train_loader, val_loader = load_data_eval(cfg, data_dir = eval_dir)
 
         #predict and evaluate
-        height_error, xy_error, degree_error, MED_mean, MED_std = predict_and_eval(cfg, model, val_loader, device)
+        height_error, xy_error, degree_error, MED_mean, MED_std, all_distances = eval_utils_plot.predict_and_evaluate_val_dataset(cfg, model, device, val_loader)
 
         #append to list
         height_error_list.append(height_error)

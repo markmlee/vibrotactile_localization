@@ -40,9 +40,18 @@ from eval_collisioncheck_calibration import Checker_Collision
 #custom models
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../learning')))
 from models.CNN import CNNRegressor2D
+from models.Resnet import ResNet18_audio, ResNet50_audio, ResNet50_audio_proprioceptive, ResNet50_audio_proprioceptive_dropout
+from models.AudioSpectrogramTransformer import AST, AST_multimodal
+from models.multimodal_transformer import MultiModalTransformer
+from models.multimodal_transformer_xt_xdot import MultiModalTransformer_xt_xdot_t
+from models.multimodal_transformer_xt_xdot_gcc import MultiModalTransformer_xt_xdot_t_gccphat
+from models.multimodal_transformer_xt_xdot_gcc_tokens import MultiModalTransformer_xt_xdot_t_gccphat_tokens
+from models.multimodal_transformer_xt_xdot_phase import MultiModalTransformer_xt_xdot_t_phase
+from models.multimodal_transformer_xt_xdot_toda import MultiModalTransformer_xt_xdot_t_toda
 
 #dataset
 from datasets import AudioDataset
+from eval_utils_plot import predict_from_eval_dataset
 
 #custom utils
 import microphone_utils as mic_utils
@@ -62,7 +71,7 @@ The output should match the predicted referrence third globally in the file pred
 
 CREATE_GIF_ROBOT_VISUALIZATION = False #set to True to create GIF of all trials of robot hitting the cylinder with contact
 CREATE_GIF_ALL_CONTACTS = True #set to True to create GIF of all predictions, camera pannign viewpoints
-
+SAVE_COLLISION_IMAGES = False #set to True to save images of collision check
 
 def xy_to_radians( x, y):
         """
@@ -111,7 +120,19 @@ def predict_contact_from_wavfile(cfg):
     print(f"device: {device}")
 
     #load model.pth from checkpoint
-    model = CNNRegressor2D(cfg)
+    #TODO: MODIFY ACCORDING TO MODEL
+    # model = CNNRegressor2D(cfg)
+    # model = ResNet50_audio(cfg)
+    # model = AST(cfg)
+    # model = ResNet50_audio_proprioceptive(cfg)
+    # model = ResNet50_audio_proprioceptive_dropout(cfg)
+    # model = AST_multimodal(cfg)
+    # model = MultiModalTransformer(cfg)
+    # model = MultiModalTransformer_xt_xdot_t(cfg)
+    model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_phase(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_toda(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_gccphat_tokens(cfg)
     model.load_state_dict(torch.load(os.path.join(cfg.model_directory, 'model.pth')))
 
     #verify if model is loaded by checking the model parameters
@@ -123,43 +144,8 @@ def predict_contact_from_wavfile(cfg):
     total_trials = len(dataset)
     print(f"total_trials: {total_trials}")
 
-    #for item in data_loader:
-    for _, (x, y, _) in enumerate(tqdm(val_loader)):
-        x_input, Y_val = x.float().to(device), y.float().to(device)
-
-        with torch.no_grad():
-            Y_output = model(x_input) 
-
-            #split prediction to height and radian
-            height_pred = Y_output[:,0]
-
-            #clip height to [-11, +11]
-            height_pred = torch.clamp(height_pred, -11, 11)
-            height_val = Y_val[:,0]
-            height_diff = height_pred - height_val
-
-            x_pred = Y_output[:,1]
-            y_pred = Y_output[:,2]
-
-            #clip x and y to [-1, +1]
-            x_pred = torch.clamp(x_pred, -1, 1)
-            y_pred = torch.clamp(y_pred, -1, 1)
-
-            #convert y_val to radian
-            x_val = Y_val[:,1]
-            y_val = Y_val[:,2]
-            radian_val = torch.atan2(y_val, x_val)
-
-            #convert y_pred to radian
-            radian_pred = torch.atan2(y_pred, x_pred)
-            deg_pred = torch.rad2deg(radian_pred)
-
-            #resolve wrap around angle issues
-            radian_error = calculate_radian_error(radian_pred, radian_val)
-            degree_diff = torch.rad2deg(radian_error)
-
-
-    # print(f"height_pred: {height_pred}, deg_pred: {deg_pred},  height_diff: {height_diff} degree_diff: {degree_diff}")
+    # predict
+    height_pred, x_pred, y_pred, _ , _, _, _, _, _, _ =  predict_from_eval_dataset(cfg, model, device, val_loader)
 
     return height_pred, x_pred, y_pred, total_trials
 
@@ -316,22 +302,22 @@ def get_arm_pose_from_robotstate(trial_dir, robot):
 
     joints = np.load(trial_dir + '/q_t.npy')
     pose= robot.link_fk(links=['panda_hand'], cfg={
-                                'panda_joint1':joints[-165,0],
-                                'panda_joint2':joints[-165,1],
-                                'panda_joint3':joints[-165,2],
-                                'panda_joint4':joints[-165,3],
-                                'panda_joint5':joints[-165,4],
-                                'panda_joint6':joints[-165,5],
-                                'panda_joint7':joints[-165,6]})
+                                'panda_joint1':joints[-125,0],
+                                'panda_joint2':joints[-125,1],
+                                'panda_joint3':joints[-125,2],
+                                'panda_joint4':joints[-125,3],
+                                'panda_joint5':joints[-125,4],
+                                'panda_joint6':joints[-125,5],
+                                'panda_joint7':joints[-125,6]})
     #pose= pose['panda_hand']
     # print("keys", pose.keys())
     for key in pose.keys():
         pose = pose[key]
     # print("pose:", pose)
 
-    joint_trajectory = joints[-165-30:-165,:] #last 30 points
+    joint_trajectory = joints[-125-30:-125,:] #last 30 points
 
-    joints = joints[-165,:]
+    joints = joints[-125,:]
     # Convert joints to a list of lists
     joints_list = joints.tolist()
 
@@ -415,11 +401,24 @@ def get_stick_cylinder(path_to_stl):
     # Load collision object mesh
     collision_obj = o3d.io.read_triangle_mesh(path_to_stl)
     collision_obj.compute_vertex_normals()
-    r = R.from_quat([0.7071, 0, 0, 0.7071])
+
+    # Initial quaternion
+    initial_quat = R.from_quat([0.7071, 0, 0, 0.7071])
+
+    # Quaternion for 90-degree rotation around Z axis
+    z_rotation_quat = R.from_quat([0, 0, 0.7071, 0.7071]) #THIS IS FOR VERTICAL STICK MOUNTS
+    # z_rotation_quat = R.from_quat([0, 0, 0, 1])
+
+
+    # Compute the new quaternion by multiplying the initial quaternion by the Z rotation quaternion
+    new_quat = z_rotation_quat * initial_quat
+
+    r = R.from_quat(new_quat.as_quat())
+
     rz = R.from_euler('z', 2, degrees=True)
     T_object = np.eye(4)
     T_object[:3,:3] = rz.as_matrix()@r.as_matrix()
-    T_object[0:3,3] = [-0.0126,0.496,0.31]
+    T_object[0:3,3] = [-0.00,0.44,0.32]
     collision_obj.transform(T_object)
 
     return collision_obj
@@ -482,6 +481,7 @@ def get_pcloud_cross(path_to_pts):
     manual_translation = np.eye(4)
     manual_translation[1, 3] = 0.03  # 3cm down
     manual_translation[0, 3] = -0.01  # 2cm right 
+    manual_translation[2, 3] = 0.0  # 2cm +z  
 
     # Combine the transformations
     combined_transformation = manual_translation @ transformation_final
@@ -675,9 +675,11 @@ def add_collision_object_to_visualizer(vis):
     Add the collision object to the visualizer
     Input: path to the collision object STL file
     """
-
+    #TODO: choose which object to visualize
     # Add the collision object to the visualizer
     # collision_obj = get_stick_cylinder("/home/mark/audio_learning_project/acoustic_cylinder/franka_panda/meshes/cylinder/collision_object_dense.stl") #FOR STICK SIMPLE CASE
+
+
     gt_pointcloud_path = '/home/mark/audio_learning_project/evaluation/3D_scan_GT'
     gt_pointcloud_file = os.path.join(gt_pointcloud_path, 'OBJECT 1A cross.pts')
     collision_obj = get_pcloud_cross(gt_pointcloud_file)
@@ -774,10 +776,10 @@ def add_geometries_to_visualizer(vis, cylinder_copy, contact_pt_transformed):
     # Add the collision object (path is hardcoded for now)
     add_collision_object_to_visualizer(vis)
 
-    contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
-    contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
-    contact_pt.translate(np.array([contact_pt_transformed.x, contact_pt_transformed.y, contact_pt_transformed.z]))
-    vis.add_geometry(contact_pt)
+    # contact_pt = o3d.geometry.TriangleMesh.create_sphere(radius=0.02)
+    # contact_pt.paint_uniform_color([1.0, 0.0, 0.0])
+    # contact_pt.translate(np.array([contact_pt_transformed.x, contact_pt_transformed.y, contact_pt_transformed.z]))
+    # vis.add_geometry(contact_pt)
 
     # Add coordinate frame
     coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
@@ -884,27 +886,29 @@ def main(cfg: DictConfig):
     collision_checker.setup_visualization(window_width=800, window_height=600)
 
     # Run collision check
-    min_dist_list, image_list, gt_contact_point_list = collision_checker.run_collision_check(robot_joints_list, visualize=False)
+    min_dist_list, image_list, gt_contact_point_list = collision_checker.run_collision_check(robot_joints_list, visualize=SAVE_COLLISION_IMAGES)
 
-    # Save the images in the output directory with the current timestamp
-    output_dir = "output_images"
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir_with_timestamp = os.path.join(output_dir, timestamp)
+    if SAVE_COLLISION_IMAGES:
+        # Save the images in the output directory with the current timestamp
+        output_dir = "output_images"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir_with_timestamp = os.path.join(output_dir, timestamp)
 
-    # Create the output directory if it doesn't exist
-    os.makedirs(output_dir_with_timestamp, exist_ok=True)
+        # Create the output directory if it doesn't exist
+        os.makedirs(output_dir_with_timestamp, exist_ok=True)
 
-    for i, image in enumerate(image_list):
-        image_path = os.path.join(output_dir_with_timestamp, f"image_{i}.png")
-        imageio.imwrite(image_path, image)
-        print(f"Saved image {i} to {image_path}")
+        for i, image in enumerate(image_list):
+            image_path = os.path.join(output_dir_with_timestamp, f"image_{i}.png")
+            imageio.imwrite(image_path, image)
+            print(f"Saved image {i} to {image_path}")
 
-    # sys.exit()
+        sys.exit()
 
 
     ###transform the output to robot baselink frame###
     #post process XY -> radian -> XY (to ensure projection is on the unit circle) AND (resolve wrap around issues) 
     for trial_count in range(total_trials):
+        print(f"trial: {trial_count} ,input x: {x_pred[trial_count]}, y: {y_pred[trial_count]}, height: {height_pred[trial_count]}")
         cur_contact_pt = transform_predicted_XYZ_to_EE_XYZ(x_pred[trial_count], y_pred[trial_count],height_pred[trial_count], cfg.cylinder_radius, cfg.cylinder_transform_offset)
         # print(f"cur_contact_pt: {cur_contact_pt}")
 
@@ -918,7 +922,6 @@ def main(cfg: DictConfig):
         #transform the contact point to the global frame
         contact_pt_transformed, robot_ee_pose = convert_contactpt_to_global(cur_contact_pt, robot, robot_joints_list[trial_count])
 
-        # transformed_contact_pt = visualize_robot_cylinder_stick(cylinder, cylinder_copy, robot, robot_joints, cur_contact_pt)
         if CREATE_GIF_ROBOT_VISUALIZATION:
             create_robot_visualization_gif(trial_count, cylinder, cylinder_copy, robot, robot_joints_list[trial_count], robot_joint_trajectory_list[trial_count], contact_pt_transformed, save_gif=True)
 
@@ -928,18 +931,31 @@ def main(cfg: DictConfig):
         cylinder_pose_list.append(robot_ee_pose)
 
 
-    # ================== Post processing ==================
+    print(f" ******* comparing pred and GT ******* ")
+    for trial_count in range(total_trials):
+        gt_contact_pt = gt_contact_point_list[trial_count]
+        transformed_contact_pt = transformed_contact_pt_list[trial_count]
+        print(f"trial: {trial_count}, gt_contact_point xyz: ({gt_contact_pt.x:.4f}, {gt_contact_pt.y:.4f}, {gt_contact_pt.z:.4f}), "
+            f"transformed_contact_pt xyz: ({transformed_contact_pt.x:.4f}, {transformed_contact_pt.y:.4f}, {transformed_contact_pt.z:.4f})")
+    
+
+    # # ================== Post processing ==================
     delete_trial_index = []
 
     for trial_count in range(total_trials):
-        #print only 3 decimal places
-        # print(f"cylinder_pos_X: {cylinder_pose_list[trial_count].x:.3f}, "
-        #     f"cylinder_pos_Y: {cylinder_pose_list[trial_count].y:.3f}, "
-        #     f"cylinder_pos_Z: {cylinder_pose_list[trial_count].z:.3f}")
+        # print only 3 decimal places
+        print(f"cylinder_pos_X: {cylinder_pose_list[trial_count].x:.3f}, "
+            f"cylinder_pos_Y: {cylinder_pose_list[trial_count].y:.3f}, "
+            f"cylinder_pos_Z: {cylinder_pose_list[trial_count].z:.3f}")
         
-        # if y value > 0.53, remove this trial from  cylinder_pose_list and transformed_contact_pt_list
-        if cylinder_pose_list[trial_count].y > 0.53:
-            print(f"y value > 0.53, removing trial: {trial_count}")
+        # # if y value > 0.53, remove this trial from  cylinder_pose_list and transformed_contact_pt_list
+        # if cylinder_pose_list[trial_count].y > 0.53 or cylinder_pose_list[trial_count].z < 0.31:
+        #     print(f"y value > 0.53 or z < 0.3, removing trial: {trial_count}")
+        #     delete_trial_index.append(trial_count)
+
+        # remove trial if the ground truth contact point z value is greater than 0.38
+        if gt_contact_point_list[trial_count].z > 0.35:
+            print(f"gt_contact_point z value > 0.35, removing trial: {trial_count}")
             delete_trial_index.append(trial_count)
     
     #delete the trials with y > 0.53
@@ -949,7 +965,7 @@ def main(cfg: DictConfig):
         del transformed_contact_pt_list[index]
         del min_dist_list[index]
         del gt_contact_point_list[index]
-    # =====================================================
+    # # =====================================================
         
 
     #Add all contact points to vissualizer. Create a GIF of all contact points
@@ -964,8 +980,13 @@ def main(cfg: DictConfig):
     # evaluate the Chamfer Distance between the predicted point cloud and the ground truth point cloud
     CD_singleway = eval_utils.compute_chamfer_distance_singleway(pcloud_of_contactpts, collision_obj_pcloud)
 
-    print(f"Chamfer Distance: {CD_singleway}")
+    # compute MAE between the predicted contact point and the ground truth contact point
+    MAE_contact_point = eval_utils.compute_MAE_contact_point(transformed_contact_pt_list, gt_contact_point_list)
+    euclidean_distance, std_deviation = eval_utils.compute_euclidean_distance(transformed_contact_pt_list, gt_contact_point_list)
+    MSE_contact_point = eval_utils.compute_MSE_contact_point(transformed_contact_pt_list, gt_contact_point_list)
 
+
+    print(f"Chamfer Distance: {CD_singleway}, MAE: {MAE_contact_point}, Mean euclidean_distance: {euclidean_distance}, STD: {std_deviation}")
 
     
 

@@ -295,6 +295,8 @@ class MultiModalTransformer_xt_xdot_t_gccphat(nn.Module):
             gcc_input: Tensor of shape [batch_size, 15, 883] (15 mic pairs)
         """
         batch_size = audio_input.shape[0]
+
+        # print(f"audio_input: {audio_input.shape}, state_input: {state_input.shape}, gcc_input: {gcc_input.shape}")
         
         # Verify input shapes
         assert gcc_input.shape[1] == 15, f"Expected 15 mic pairs, got {gcc_input.shape[1]}"

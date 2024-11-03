@@ -16,6 +16,7 @@ import torch
 from tqdm import tqdm
 import math
 from scipy.spatial.transform import Rotation as R
+from datetime import datetime
 
 #urdfpy
 from urdfpy import URDF
@@ -67,7 +68,7 @@ class Checker_Collision:
         self.vis = o3d.visualization.Visualizer()
         self.vis.create_window(width=window_width, height=window_height)
         self._add_geometries_to_visualizer()
-        self.robot_geometries = self._add_robot_to_visualizer()
+        # self.robot_geometries = self._add_robot_to_visualizer()
         self._set_camera_view()
 
     def _add_geometries_to_visualizer(self):
@@ -117,7 +118,7 @@ class Checker_Collision:
             geom.compute_vertex_normals()
             self.vis.update_geometry(geom)
 
-    def find_closest_point(self, cylinder_pts, pcloud_pts, threshold=0.05):
+    def find_closest_point(self, cylinder_pts, pcloud_pts, threshold=0.01):
         target_kdtree = KDTree(pcloud_pts)
         close_distances, close_indices = target_kdtree.query(cylinder_pts, distance_upper_bound=threshold)
 
@@ -205,7 +206,7 @@ class Checker_Collision:
             contact_point_pt.z = contact_point[2]
             contact_point_list.append(contact_point_pt)
 
-            print(f"Closest index: {idx}, min_dist: {min_dist}")
+            # print(f"Closest index: {idx}, min_dist: {min_dist}")
 
             if visualize:
                 # Remove previous geometries
@@ -231,7 +232,7 @@ class Checker_Collision:
                 image = self.capture_image()
                 image_list.append((image * 255).astype(np.uint8))
 
-                time.sleep(1)
+                time.sleep(0.5)
 
         return min_dist_list, image_list, contact_point_list
 
@@ -301,7 +302,7 @@ def get_pcloud_cross(path_to_pts):
     # Create an additional translation matrix for 3cm in Z direction
     manual_translation = np.eye(4)
     manual_translation[1, 3] = 0.03  # 3cm down
-    manual_translation[0, 3] = -0.02  # 2cm right 
+    # manual_translation[0, 3] = -0.02  # 2cm right 
 
     # Combine the transformations
     combined_transformation = manual_translation @ transformation_final
@@ -535,19 +536,29 @@ def main():
 
     # Run collision check
     print(f"joint_states: {joint_states}")
-    min_dist_list, image_list = checker.run_collision_check(joint_states, visualize=True)
+    min_dist_list, image_list, contact_point_list = checker.run_collision_check(joint_states, visualize=True)
+
+    #remove inf from min_dist_list
+    min_dist_list = [x for x in min_dist_list if x != np.inf]
 
     # Calculate average minimum distance
     avg_min_dist = np.mean(min_dist_list)
     print(f"Average minimum distance: {avg_min_dist}")
 
-    # Save the last image
-    last_image = image_list[-1]
-    imageio.imwrite('last_frame.png', last_image)
+    # Save the images in the output directory with the current timestamp
+    output_dir = "output_images"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir_with_timestamp = os.path.join(output_dir, timestamp)
 
-    # Create gif from images
-    duration = int(1000 / 2)  # 2 fps
-    imageio.mimsave('animation.gif', image_list, duration=duration)
+    # Create the output directory if it doesn't exist
+    os.makedirs(output_dir_with_timestamp, exist_ok=True)
+
+    for i, image in enumerate(image_list):
+        image_path = os.path.join(output_dir_with_timestamp, f"image_{i}.png")
+        imageio.imwrite(image_path, image)
+        print(f"Saved image {i} to {image_path}")
+
+    sys.exit()
 
     # Close the visualization window
     checker.close_visualization()

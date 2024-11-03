@@ -1,13 +1,11 @@
 #UPDATE PARAMS
 # model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combined_model
-model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/v2data_Multi_ResNet50_MLP_selfattn_xt_xdot_gcc #resnet50_qt_mini_dropout_weightedCat #resnet_b256_lr1e3 #wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combinedv2_suction_model
+model_directory: /home/mark/audio_learning_project/vibrotactile_localization/learning/outputs/v3data_Multi_ResNet50_MLP_selfattn_xt_xdot_gcc #resnet50_qt_mini_dropout_weightedCat #resnet_b256_lr1e3 #wood_T12_T22_T25_T32_L42_T22_L80_Horizontal_combinedv2_suction_model
 
 
 
 # ----- mic / data param -----
 data_dir:  #DOESNT MATTER BC IN EVAL.py #franka_2D_localization
-offset_radian_rightside: False
-offset_radian_lateralside: False
 background_dir: /home/mark/audio_learning_project/data/franka_constant/no_contact/trial0/
 
 transform: mel
@@ -58,6 +56,6 @@ save_meanvar_output: False
 inspect_data_label: False # to iteratively visualize the audio & GT label in 3D plot 
 visualize_subtract_background: False
 visuaize_dataset: False # to visualize the dataloader
-visuaize_regression: True # for evaluation, to visualize the regression output 
+visuaize_regression: False # for evaluation, to visualize the regression output 
 
 cylinder_radius: 0.06 #in meters
