@@ -1,7 +1,7 @@
 
-# *"SonicBoom:"* : Contact Localization Using Array of Microphones
+# *SonicBoom:* : Contact Localization Using Array of Microphones
 
-SonicBoom, a holistic hardware and learning pipeline that enables contact localization through an array of contact microphones. While conventional sound source localization methods effectively triangulate sources in air, localization through solid media with irregular geometry and structure presents challenges that are difficult to model analytically. By leveraging relative features between microphones, SonicBoom achieves localization errors of 0.43cm for in-distribution interactions and maintains robust performance of 2.22cm error even with novel objects and contact conditions. 
+SonicBoom is a holistic hardware and learning pipeline that enables contact localization through an array of contact microphones. While conventional sound source localization methods effectively triangulate sources in air, localization through solid media with irregular geometry and structure presents challenges that are difficult to model analytically. By leveraging relative features between microphones, SonicBoom achieves localization errors of 0.43cm for in-distribution interactions and maintains robust performance of 2.22cm error even with novel objects and contact conditions. 
 
 Visit the [project website](https://iamlab-cmu.github.io/sonicboom/) for more information and videos.
 Our paper can be found [here](https://arxiv.org/abs/2412.09878). 
@@ -15,7 +15,7 @@ Our paper can be found [here](https://arxiv.org/abs/2412.09878).
 
 # Audio Data Collection
 
-## setup
+## Setup
 pip install librosa
 pip install sounddevice
 pip install pysoundfile
@@ -25,7 +25,7 @@ pip install wandb
 pip install noisereduce
 pip install hydra-core --upgrade
 
-## initial setup
+## Initial setup
 See what mic devices are available. Running code directory `/home/iam-lab/audio_localization/audio_datacollection/scripts`
 Change absolute path in datasets.py line 23.
 
@@ -44,7 +44,7 @@ python3 record_all_mics.py -l
 
 
 
-## running audio with human preliminary testing
+## Running audio with human preliminary testing
 Setup USB lines, check devicelist and specify devicelist input in the code. 
 ```
 python3 record_with_human.py --record 1
