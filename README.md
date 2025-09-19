@@ -1,4 +1,19 @@
-# audio_datacollection
+
+# *"SonicBoom:"* : Contact Localization Using Array of Microphones
+
+SonicBoom, a holistic hardware and learning pipeline that enables contact localization through an array of contact microphones. While conventional sound source localization methods effectively triangulate sources in air, localization through solid media with irregular geometry and structure presents challenges that are difficult to model analytically. By leveraging relative features between microphones, SonicBoom achieves localization errors of 0.43cm for in-distribution interactions and maintains robust performance of 2.22cm error even with novel objects and contact conditions. 
+
+Visit the [project website](https://iamlab-cmu.github.io/sonicboom/) for more information and videos.
+Our paper can be found [here](https://arxiv.org/abs/2412.09878). 
+
+## Code Description
+`/learning` folder contains relevant code to create the model architecture, setup the dataloader, and train the network. 
+`/scripts` folder contains relevant code to interface with the robot to collect data, as well as util functions for the microphone processing.
+
+`train2D_UMC.py` is the main training script where UMC1820 is the DAQ model number used for the paper. Previous training scripts utilized separate USB DAQ for audio interface.  
+
+
+# Audio Data Collection
 
 ## setup
 pip install librosa
@@ -29,7 +44,7 @@ python3 record_all_mics.py -l
 
 
 
-## running audio with human prelim testing
+## running audio with human preliminary testing
 Setup USB lines, check devicelist and specify devicelist input in the code. 
 ```
 python3 record_with_human.py --record 1
@@ -40,7 +55,7 @@ python3 record_with_human.py --record 0
 
 
 
-## Robot motion for collecting audio with franka
+## Robot motion for collecting audio with Franka robot
 Setup USB lines, check devicelist and specify in the code.
 
 To verify all mics are up and registered in the expected sequence, let's record a sequence of taps along the mics and visualize that the expected sequence of mics are responding. Plot from audio .wav files.
@@ -64,7 +79,7 @@ To record robot ee_pose, run in parallel of the recording script which subscribe
 python3 util_datalogging.py 
 ```
 
-## training from the collected dataset
+## Training from the collected dataset
 
 Move the dataset into specified directory. Use a GPU-installed desktop with pytorch (conda environment: pytorch3).
 Update the train.yaml for 1D line evaluation (corresponding dataset: franka_init_test_6mic), and train2D.yaml for 2D line evaluation (corresponding dataset: franka_2D_localization). 
@@ -73,14 +88,14 @@ Update the train.yaml for 1D line evaluation (corresponding dataset: franka_init
 python train.py 
 ```
 
-## evaluating the trained model
+## Evaluating the trained model
 Update the eval.yaml or eval2D.yaml. Specify the desired model path.  
 ```
 python eval.py 
 ```
 
 
-## inferencing on the robot
+## Inferencing on the robot
 Stream the microphones via ROS topics. Input the device IDs according to the number of mics.
 ```
 python sounddevice_ros_publisher_multi.py -d 2 10 11 12 13 14
