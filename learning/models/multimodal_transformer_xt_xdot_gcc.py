@@ -223,7 +223,7 @@ class MultiModalTransformer_xt_xdot_t_gccphat(nn.Module):
         # Different dropout rates
         self.audio_dropout = 0.1  # Lower dropout for audio
         self.gcc_dropout = 0.1    # Lower dropout for GCC-PHAT
-        self.state_dropout = 0.3  # Higher dropout for state
+        self.state_dropout = 0.7  # Higher dropout for state
         
         # Audio encoder with larger capacity
         self.audio_encoder = ResNet50_Feature(cfg)

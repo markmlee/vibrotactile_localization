@@ -8,7 +8,7 @@ import os
 from tqdm import tqdm
 import sys
 from easydict import EasyDict
-
+import time
 from torchvision import transforms as T
 import torch.nn as nn
 import torch.optim as optim
@@ -29,7 +29,7 @@ from datasets import load_data
 # from models.CNN import CNNRegressor
 
 #eval
-# from sklearn.metrics import mean_squared_error, root_mean_squared_error, r2_score
+from sklearn.metrics import  r2_score
 
 #import function from another directory for plotting
 sys.path.insert(0,'/home/mark/audio_learning_project/vibrotactile_localization/scripts')
@@ -140,8 +140,8 @@ def calculate_radian_error(rad_pred, rad_val):
 def predict_from_eval_dataset(cfg, model, device, val_loader ):
     
     total_trials = len(val_loader)
-    y_val_list = []
-    y_pred_list = []
+    output_val_list = []
+    output_pred_list = []
 
     all_distances = []
 
@@ -175,18 +175,32 @@ def predict_from_eval_dataset(cfg, model, device, val_loader ):
         xdot_t_val = xdot_t.float().to(device)
         gcc_val = gcc.float().to(device)
 
-        xt_xdot_t = torch.cat((xt_val, xdot_t_val), dim=2)
+        #TODO: MODIFY ACCORDING TO MODEL
+        xt_xdot_t = torch.cat((xt_val, xdot_t_val), dim=2) #USE THIS FOR ALL MODELS except PROPRIO
+        # xt_xdot_t = torch.cat((xt_val[:,:,3:], xdot_t_val), dim=2) #USE THIS FOR PROPRIO where we don't use global position
 
         with torch.no_grad():
             #TODO: MODIFY ACCORDING TO MODEL
-            # Y_output = model(x_input) # --> single input model
+
             # Y_output = model(x_input, qt_val)
             # Y_output = model(x_input, xt_val)
-            # Y_output = model(x_input, xt_xdot_t)
+            
             # Y_output = model(x_input, qt_val, tdoa_val)
             # Y_output = model(x_input, xt_xdot_t, tdoa_val)
-            Y_output = model(x_input, xt_xdot_t, gcc_val)
             # Y_output = model(x_input, xt_xdot_t, phase)
+
+            # ********************************************************
+            #inference time
+            start_time = time.time()
+            Y_output = model(x_input) # --> single input model
+            # Y_output = model(xt_xdot_t) # --> single state input model
+
+            # Y_output = model(x_input, xt_xdot_t)
+            # Y_output = model(x_input, gcc_val)
+            # Y_output = model(x_input, xt_xdot_t, gcc_val)
+
+            # ********************************************************
+            print(f"Time taken for inference: {time.time() - start_time}")
 
             #split prediction to height and radian
             height_pred = Y_output[:,0]
@@ -207,6 +221,15 @@ def predict_from_eval_dataset(cfg, model, device, val_loader ):
             x_val = Y_val[:,1]
             y_val = Y_val[:,2]
             radian_val = torch.atan2(y_val, x_val)
+
+            #------------------------------------------------------------------
+            # #TODO: RANDOM BASELINE EVLUATION
+            # #overwrite height prediction with random val between -11 and 11
+            # height_pred = torch.rand_like(height_pred) * 22 - 11
+            # #overwrite x and y prediction with random val between -1 and 1
+            # x_pred = torch.rand_like(x_pred) * 2 - 1
+            # y_pred = torch.rand_like(y_pred) * 2 - 1
+            #------------------------------------------------------------------
 
             #convert y_pred to radian
             radian_pred = torch.atan2(y_pred, x_pred)
@@ -290,13 +313,13 @@ def predict_from_eval_dataset(cfg, model, device, val_loader ):
             # MED_list.append(MED_pt)
 
             #combine height and radian to y_pred
-            # y_pred = torch.stack((height_pred, x_pred, y_pred), dim=1)
-            # y_val_ = torch.stack((Y_val[:,0], x_val, y_val), dim=1)
+            output_pred = torch.stack((height_pred, x_pred, y_pred), dim=1)
+            output_val_ = torch.stack((Y_val[:,0], x_val, y_val), dim=1)
 
         
             # #get tensor values and append them to list
-            # y_val_list.extend(y_val_.cpu().numpy())
-            # y_pred_list.extend(y_pred.cpu().numpy())
+            output_val_list.extend(output_val_.cpu().numpy())
+            output_pred_list.extend(output_pred.cpu().numpy())
         
             
     #sum up the rmse and divide by number of batches
@@ -309,7 +332,7 @@ def predict_from_eval_dataset(cfg, model, device, val_loader ):
     # MED_list = np.array(MED_list)
     all_distances = np.array(all_distances)
 
-    return height_pred, x_pred, y_pred, total_trials, height_error, xy_error, degree_error, all_distances, y_val_list, y_pred_list
+    return height_pred, x_pred, y_pred, total_trials, height_error, xy_error, degree_error, all_distances, output_val_list, output_pred_list
 
 def predict_and_evaluate_val_dataset(cfg, model, device, val_loader ):
     """
@@ -342,8 +365,8 @@ def predict_and_evaluate_val_dataset(cfg, model, device, val_loader ):
     # np.save('y_val.npy', y_val_list)
     
     #stack the list of array to numpy array
-    # y_val_list = np.stack(y_val_list)
-    # y_pred_list = np.stack(y_pred_list)
+    y_val_list = np.stack(y_val_list)
+    y_pred_list = np.stack(y_pred_list)
 
     if cfg.visuaize_regression:
         #plot regression line

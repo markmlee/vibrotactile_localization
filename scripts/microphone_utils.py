@@ -778,10 +778,17 @@ def load_specific_wav_files(devicelist, mics_to_plot, save_path_data, total_tria
     mic_data_over_trials = []
 
     for mic in mics_to_plot:
-        #concat 1 mic over all trials
-        mic_id = devicelist[mic]
-        mic_data_all_trials = concat_wav_files(save_path_data,  total_trial_count , mic_id)
-        mic_data_over_trials.append(mic_data_all_trials)
+        # #concat 1 mic over all trials
+        # mic_id = devicelist[mic]
+        # mic_data_all_trials = concat_wav_files(save_path_data,  total_trial_count , mic_id)
+        # mic_data_over_trials.append(mic_data_all_trials)
+
+        file_name = f"{save_path_data}/mic{devicelist[mic]}.wav"
+        print(f"file_name: {file_name}")
+        data, fs = librosa.load(file_name, sr=44100, mono=True)
+        mic_data_over_trials.append(data)
+        
+        
 
     return mic_data_over_trials
 
@@ -849,7 +856,7 @@ def plot_envelope(frame_size, hop_length, devicelist, mics_to_plot, save_path_da
     # Create a new figure with a specific size
     plt.figure(figsize=(15, 7))  
     # Display the waveform of the signal
-    librosa.display.waveshow(mics_plot_over_trials[0], alpha=0.5)
+    # librosa.display.waveshow(mics_plot_over_trials[0], alpha=0.5)
     # Plot the amplitude envelope over time
     plt.plot(time, mics_envelope_over_trials[0], color="r") 
     # Set the title of the plot
@@ -997,8 +1004,9 @@ def concat_wav_files(load_path, trial_count,mic_id):
     #for all trials, find the wav file and concatenate
     for trial_number in range(trial_count):
 
-        file_name = f"{load_path}trial{trial_number}_mic{mic_id}.wav"
-        data, fs = librosa.load(file_name)
+        file_name = f"{load_path}trial{trial_number}/mic{mic_id}.wav"
+        print(f"file_name: {file_name}")
+        data, fs = librosa.load(file_name, sr=44100, mono=True)
         concat_data.append(data)
         
         
@@ -1256,7 +1264,7 @@ def compute_gcc_phat_pair(x: torch.Tensor, y: torch.Tensor, fs: int = 44100, max
     eps = 1e-10
     Gxy_phat = Gxy / (torch.abs(Gxy) + eps)
     
-    # IFFT
+    # IFFT real value
     gcc = torch.fft.irfft(Gxy_phat)
     
     # Limit to max lag and shift

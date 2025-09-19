@@ -33,10 +33,17 @@ from models.Resnet import ResNet18_audio, ResNet50_audio, ResNet50_audio_proprio
 from models.AudioSpectrogramTransformer import AST, AST_multimodal, AST_multimodal_qt
 from models.multimodal_transformer import MultiModalTransformer
 from models.multimodal_transformer_xt_xdot import MultiModalTransformer_xt_xdot_t
+from models.multimodal_transformer_xt_xdot_v2 import MultiModalTransformer_xt_xdot_t_v2
+
 from models.multimodal_transformer_xt_xdot_gcc import MultiModalTransformer_xt_xdot_t_gccphat
+from models.multimodal_transformer_xt_xdot_gcc_v2 import MultiModalTransformer_xt_xdot_t_gccphat_v2
+
 from models.multimodal_transformer_xt_xdot_gcc_tokens import MultiModalTransformer_xt_xdot_t_gccphat_tokens
 from models.multimodal_transformer_xt_xdot_toda import MultiModalTransformer_xt_xdot_t_toda
 from models.multimodal_transformer_xt_xdot_phase import MultiModalTransformer_xt_xdot_t_phase
+from models.multimodal_transformer_audio_gcc import MultiModalTransformer_audio_gccphat
+from models.multimodal_transformer_xt_xdot_only import StateOnlyTransformer
+
 #eval
 from sklearn.metrics import mean_squared_error, root_mean_squared_error
 
@@ -74,15 +81,26 @@ def model_prediction(cfg, device, model, x, y, qt, xt, xdot_t, tdoa, gcc_matrix,
     # print(f"shapes of x_train, y_train: {x_train.shape}, {y_train.shape}") #--> torch.Size([80, 6, 40, 690]), torch.Size([80, 2])
     #TODO: concat xt_ and xdot_t_
     # print(f"xt_: {xt_.shape}, xdot_t_: {xdot_t_.shape}") #--> xt_: torch.Size([8, 50, 7]), xdot_t_: torch.Size([8, 50, 3])
-    xt_xdot_t = torch.cat((xt_, xdot_t_), dim=2)
+    # xt_xdot_t = torch.cat((xt_, xdot_t_), dim=2)
+
+    #TODO: Modify which state info to use. All models use xt_xdot_t full. Only proprio model uses xt_xdot_t last 4 columns
+    # xt_: torch.Size([8, 50, 7]), xdot_t_: torch.Size([8, 50, 3]) --> change xt to torch.Size([8, 50, 4]) by taking the last 4 columns of xt
+    xt_xdot_t = torch.cat((xt_[:,:,3:], xdot_t_), dim=2)
+    # print(f"xt_xdot_t: {xt_xdot_t.shape}")
 
     #TODO: MODIFY HERE TO USE THE RIGHT MODEL
     # y_pred = model(x_) # --> CNN single-head output
-    # y_pred = model(x_, xt_xdot_t) # --> Audio + proprioceptive input
+    # y_pred = model(xt_xdot_t) # --> single proprioceptive input
+
+    y_pred = model(x_, xt_xdot_t) # --> Audio + proprioceptive input
     # y_pred = model(x_, qt_, tdoa_) # --> Audio + proprioceptive + tdoa input
-    y_pred = model(x_, xt_xdot_t, gcc_matrix_) # --> Audio + proprioceptive + gcc input
+    
     # y_pred = model(x_, xt_xdot_t, tdoa_) # --> Audio + proprioceptive + tdoa input
     # y_pred = model(x_, xt_xdot_t, phase_) # --> Audio + proprioceptive + tdoa input
+
+    # y_pred = model(x_, gcc_matrix_) # --> Audio  + gcc input
+    # y_pred = model(x_, xt_xdot_t, gcc_matrix_) # --> Audio + proprioceptive + gcc input
+
 
     if cfg.output_representation == 'height':
         y_pred_height = y_pred
@@ -157,14 +175,24 @@ def train_CNN(cfg,device, wandb, logger):
 
     # model = MultiModalTransformer(cfg)
     # model = MultiModalTransformer_xt_xdot_t(cfg)
-    model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
+    # model = StateOnlyTransformer(cfg)
+
+    model = MultiModalTransformer_xt_xdot_t_v2(cfg)
+
     # model = MultiModalTransformer_xt_xdot_t_gccphat_tokens(cfg)
     # model = MultiModalTransformer_xt_xdot_t_toda(cfg)
     # model = MultiModalTransformer_xt_xdot_t_phase(cfg)
 
+    # model = MultiModalTransformer_audio_gccphat(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_gccphat(cfg)
+    # model = MultiModalTransformer_xt_xdot_t_gccphat_v2(cfg)
+
+
+    
+
 
     model.to(device)
-    logger.log(f"model: {model}")
+    # logger.log(f"model: {model}")
 
     total_params = sum(p.numel() for p in model.parameters())
     logger.log(f"Number of parameters: {total_params}")
